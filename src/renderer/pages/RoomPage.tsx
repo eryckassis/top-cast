@@ -9,9 +9,13 @@ import {
   HelpCircle,
   Loader2,
   LogOut,
+  Maximize,
+  Minimize,
   Monitor,
   Radio,
   RefreshCw,
+  UserX,
+  Volume1,
   Volume2,
   VolumeX,
   X,
@@ -77,11 +81,21 @@ interface RoomPageProps {
 
 function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(muted);
+  const [showControls, setShowControls] = useState(false);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevVolumeRef = useRef(1);
 
+  // Sincroniza stream no elemento de vídeo
   useEffect(() => {
     const videoElement = videoRef.current;
     if (videoElement) {
       videoElement.srcObject = stream;
+      videoElement.volume = volume;
+      videoElement.muted = isMuted;
     }
     return () => {
       if (videoElement) {
@@ -90,14 +104,199 @@ function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: b
     };
   }, [stream]);
 
+  // Mantém volume e silenciamento sincronizados
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.volume = volume;
+      videoRef.current.muted = isMuted;
+    }
+  }, [volume, isMuted]);
+
+  // Escuta alterações de tela cheia
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        if (containerRef.current) {
+          await containerRef.current.requestFullscreen();
+        }
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      console.warn('[StreamVideo] Erro ao alternar tela cheia:', err);
+    }
+  };
+
+  const resetHideTimer = () => {
+    setShowControls(true);
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+    }
+    hideTimerRef.current = setTimeout(() => {
+      setShowControls(false);
+    }, 2500);
+  };
+
+  const handleMouseMove = () => {
+    resetHideTimer();
+  };
+
+  const handleMouseLeave = () => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+    }
+    setShowControls(false);
+  };
+
+  const toggleMute = () => {
+    if (isMuted || volume === 0) {
+      const restore = prevVolumeRef.current > 0 ? prevVolumeRef.current : 0.8;
+      setVolume(restore);
+      setIsMuted(false);
+    } else {
+      prevVolumeRef.current = volume;
+      setIsMuted(true);
+    }
+    resetHideTimer();
+  };
+
+  const handleVolumeChange = (newVolume: number) => {
+    setVolume(newVolume);
+    if (newVolume > 0 && isMuted) {
+      setIsMuted(false);
+    } else if (newVolume === 0) {
+      setIsMuted(true);
+    }
+    resetHideTimer();
+  };
+
+  // Atalhos de teclado: F para tela cheia, M para mutar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        void toggleFullscreen();
+      } else if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        toggleMute();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMuted, volume]);
+
+  useEffect(() => {
+    return () => {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+      }
+    };
+  }, []);
+
   return (
-    <video
-      ref={videoRef}
-      autoPlay
-      playsInline
-      muted={muted}
-      className="h-full w-full bg-black object-contain"
-    />
+    <div
+      ref={containerRef}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-black select-none"
+    >
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted={isMuted}
+        onDoubleClick={() => void toggleFullscreen()}
+        className="h-full w-full bg-black object-contain cursor-pointer"
+      />
+
+      {/* Barra de controles flutuante sobre o vídeo */}
+      <div
+        className={`absolute inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-3 py-3 sm:px-5 sm:py-4 transition-opacity duration-300 ${
+          showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+        onMouseEnter={() => {
+          if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+          setShowControls(true);
+        }}
+      >
+        {/* Esquerda: Badge Ao Vivo e Controle de Volume */}
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className="flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/15 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-red-300 shadow-sm select-none">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+            </span>
+            <span>AO VIVO</span>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-full border border-slate-700/60 bg-slate-900/80 px-2.5 py-1 backdrop-blur-md shadow-sm">
+            <button
+              type="button"
+              onClick={toggleMute}
+              className="rounded p-0.5 text-slate-300 transition-colors hover:text-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+              title={isMuted ? 'Ativar som (M)' : 'Silenciar (M)'}
+              aria-label={isMuted ? 'Ativar som' : 'Silenciar'}
+            >
+              {isMuted || volume === 0 ? (
+                <VolumeX className="h-4 w-4 text-red-400" />
+              ) : volume > 0.5 ? (
+                <Volume2 className="h-4 w-4 text-slate-200" />
+              ) : (
+                <Volume1 className="h-4 w-4 text-slate-200" />
+              )}
+            </button>
+
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.02"
+              value={isMuted ? 0 : volume}
+              onChange={(e) => handleVolumeChange(Number.parseFloat(e.target.value))}
+              className="h-1.5 w-16 cursor-pointer appearance-none rounded-lg bg-slate-700 accent-blue-500 transition-all hover:bg-slate-600 sm:w-20"
+              aria-label="Controle de volume da transmissão"
+            />
+
+            <span className="w-8 text-right font-mono text-[11px] font-medium text-slate-300 select-none tabular-nums">
+              {Math.round((isMuted ? 0 : volume) * 100)}%
+            </span>
+          </div>
+        </div>
+
+        {/* Direita: Botão de Tela Cheia */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void toggleFullscreen()}
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700/60 bg-slate-900/80 text-slate-200 backdrop-blur-md transition-all hover:border-slate-500 hover:bg-slate-800 hover:text-white active:scale-95 shadow-sm"
+            title={isFullscreen ? 'Sair da tela cheia (F ou Esc)' : 'Tela cheia (F)'}
+            aria-label={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+          >
+            {isFullscreen ? (
+              <Minimize className="h-4 w-4" />
+            ) : (
+              <Maximize className="h-4 w-4" />
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -472,52 +671,65 @@ async function handleCopyCode() {
                 ? 'Online'
                 : participant.presence === 'away' ? 'Ausente' : 'Ocupado';
 
+              const canKickThisParticipant = isHost && !isSelf && participant.role !== 'host';
+
               return (
-                <li key={participant.id} className="group flex items-center justify-between gap-3 rounded-md border border-slate-700/60 bg-slate-900/50 p-2.5">
-                  <div className="flex min-w-0 items-center gap-2.5">
+                <li
+                  key={participant.id}
+                  onClick={() => {
+                    if (canKickThisParticipant) {
+                      setParticipantToKick({ id: participant.id, displayName: participant.displayName });
+                    }
+                  }}
+                  className={`group flex items-center justify-between gap-2.5 rounded-lg border border-slate-700/60 bg-slate-900/50 p-2.5 transition-all ${
+                    canKickThisParticipant
+                      ? 'cursor-pointer hover:border-red-400/40 hover:bg-slate-800/80 active:scale-[0.99]'
+                      : ''
+                  }`}
+                  role={canKickThisParticipant ? 'button' : undefined}
+                  tabIndex={canKickThisParticipant ? 0 : undefined}
+                  onKeyDown={
+                    canKickThisParticipant
+                      ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setParticipantToKick({ id: participant.id, displayName: participant.displayName });
+                          }
+                        }
+                      : undefined
+                  }
+                  title={canKickThisParticipant ? `Clique para remover ${participant.displayName} da sala` : undefined}
+                >
+                  <div className="flex min-w-0 flex-1 items-center gap-2.5">
                     <span
-                      className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/10 text-xs font-semibold text-white"
+                      className="relative grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/10 text-xs font-semibold text-white shadow-sm"
                       style={{ backgroundColor: `hsl(${avatarHue} 42% 36%)` }}
                       role="img"
                       aria-label={`${participant.displayName}, ${presenceLabel}`}
                     >
                       {initials}
-                      <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-slate-900 ${presenceColor}`} />
+                      <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-slate-900 ${presenceColor}`} />
                     </span>
-                    <span className="min-w-0 truncate text-sm font-medium text-slate-200">{participant.displayName}</span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {participant.role === 'host' && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[12px] font-medium text-amber-300">
-                        <Crown className="h-3 w-3" />Host
+                    <span className="min-w-0 truncate text-sm font-medium text-slate-200">
+                      {participant.displayName}
+                    </span>
+                    {isSelf && (
+                      <span className="shrink-0 rounded-md border border-blue-400/30 bg-blue-400/15 px-1.5 py-0.5 text-[11px] font-medium text-blue-300">
+                        Você
                       </span>
                     )}
-                    {isSelf && (
-                      <span className="rounded-full border border-blue-400/30 bg-blue-400/15 px-2 py-0.5 text-[12px] font-medium text-blue-200">Você</span>
-                    )}
-                    {!isSelf && participant.role !== 'host' && (
-                      <span className="rounded-full border border-slate-600/70 bg-slate-700/40 px-2 py-0.5 text-[12px] font-medium text-slate-400">Convidado</span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {participant.role === 'host' ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                        <Crown className="h-3 w-3" />Host
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-slate-600/70 bg-slate-700/40 px-2 py-0.5 text-[11px] font-medium text-slate-400">
+                        Convidado
+                      </span>
                     )}
                   </div>
-                  {isHost && !isSelf && participant.role !== 'host' && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Remover ${participant.displayName}`}
-                          onClick={() => setParticipantToKick({ id: participant.id, displayName: participant.displayName })}
-                          className="h-7 w-7 shrink-0 text-slate-500 hover:bg-red-400/10 hover:text-red-200"
-                        >
-                          <RemoveParticipantIcon />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Remover participante
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
                 </li>
               );
             })}
@@ -1133,21 +1345,21 @@ async function handleCopyCode() {
       </Dialog>
 
       <AlertDialog open={Boolean(participantToKick)} onOpenChange={(open) => !open && setParticipantToKick(null)}>
-        <AlertDialogContent className="max-w-[420px] overflow-hidden p-0">
+        <AlertDialogContent className="max-w-[420px] overflow-hidden p-0 border-slate-800 bg-slate-900 text-slate-100">
           <div className="flex gap-4 p-5 sm:p-6">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-400/20 bg-red-400/10 text-red-300">
-              <AlertTriangle className="h-5 w-5" />
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-500/30 bg-red-500/15 text-red-400">
+              <UserX className="h-5 w-5" />
             </span>
             <div className="min-w-0 pt-0.5">
               <AlertDialogTitle className="text-base font-semibold tracking-tight text-slate-100">
                 Remover {participantToKick?.displayName}?
               </AlertDialogTitle>
               <AlertDialogDescription className="mt-2 text-sm leading-6 text-slate-400">
-                Este participante será desconectado da sala imediatamente.
+                Este participante será desconectado da sala de transmissão imediatamente.
               </AlertDialogDescription>
             </div>
           </div>
-          <div className="flex flex-col-reverse gap-2 border-t border-slate-800 bg-slate-950/30 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+          <div className="flex flex-col-reverse gap-2 border-t border-slate-800 bg-slate-950/40 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
             <AlertDialogCancel onClick={() => setParticipantToKick(null)}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
@@ -1158,7 +1370,7 @@ async function handleCopyCode() {
               }}
               className="bg-red-600 text-white hover:bg-red-700"
             >
-              Remover
+              Remover da sala
             </AlertDialogAction>
           </div>
         </AlertDialogContent>
@@ -1188,13 +1400,5 @@ async function handleCopyCode() {
         </div>
       )}
     </main>
-  );
-}
-
-function RemoveParticipantIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
-      <path d="M4 6h12M8 6V4h4v2m2 0-.7 10H6.7L6 6m2.5 3v4m3-4v4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.4" />
-    </svg>
   );
 }
