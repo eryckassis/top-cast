@@ -5,16 +5,15 @@ export interface ProcessAudioStreamController {
   stop: () => void;
 }
 
-export function createProcessAudioTrack(sourceId: string): Promise<ProcessAudioStreamController | null> {
+export function createProcessAudioTrack(sourceId: string): Promise<ProcessAudioStreamController> {
   const processAudio = window.topCast?.processAudio;
   if (!processAudio) {
-    return Promise.resolve(null);
+    return Promise.reject(new Error('Captura de áudio isolada indisponível fora do aplicativo desktop.'));
   }
 
   return processAudio.start(sourceId).then((result) => {
     if (!result.ok) {
-      console.warn('[ProcessAudio] Falha ao iniciar captura isolada da janela:', result.error);
-      return null;
+      throw new Error(result.error ?? 'Falha ao iniciar captura isolada da janela.');
     }
 
     const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -83,7 +82,7 @@ export function createProcessAudioTrack(sourceId: string): Promise<ProcessAudioS
       removeListener();
       void processAudio.stop();
       void audioCtx.close();
-      return null;
+      throw new Error('Não foi possível criar a faixa de áudio da janela.');
     }
 
     let stopped = false;
@@ -115,9 +114,9 @@ export function createProcessAudioTrack(sourceId: string): Promise<ProcessAudioS
     track.addEventListener('ended', stop, { once: true });
 
     return { track, stop };
-  }).catch((error) => {
+  }).catch((error: unknown) => {
     console.error('[ProcessAudio] Erro ao configurar stream de audio isolado:', error);
-    return null;
+    throw error instanceof Error ? error : new Error(String(error));
   });
 }
 

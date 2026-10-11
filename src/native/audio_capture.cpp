@@ -91,9 +91,7 @@ DWORD ProcessAudioCapture::GetProcessIdFromWindowHandle(HWND hwnd)
 bool ProcessAudioCapture::Start(DWORD processId, AudioDataCallback callback, std::string& outError)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_running.load()) {
-        Stop();
-    }
+    StopLocked();
 
     if (!IsSupported()) {
         outError = "Process Loopback Audio Capture requer Windows 10 build 20348+ ou Windows 11.";
@@ -108,22 +106,40 @@ bool ProcessAudioCapture::Start(DWORD processId, AudioDataCallback callback, std
     ResetEvent(m_hStopEvent);
     m_running.store(true);
 
-    m_thread = std::thread(&ProcessAudioCapture::CaptureThreadFunc, this, processId, callback);
+    // A thread informa se a ativacao/inicializacao WASAPI deu certo antes de retornar.
+    auto initPromise = std::make_shared<std::promise<std::string>>();
+    std::future<std::string> initFuture = initPromise->get_future();
+    m_thread = std::thread(&ProcessAudioCapture::CaptureThreadFunc, this, processId, callback, initPromise);
+
+    if (initFuture.wait_for(std::chrono::seconds(5)) != std::future_status::ready) {
+        outError = "Tempo esgotado ao inicializar a captura de audio do processo.";
+        StopLocked();
+        return false;
+    }
+
+    std::string initError = initFuture.get();
+    if (!initError.empty()) {
+        outError = initError;
+        StopLocked();
+        return false;
+    }
     return true;
 }
 
 void ProcessAudioCapture::Stop()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (!m_running.load()) {
-        return;
-    }
+    StopLocked();
+}
 
+void ProcessAudioCapture::StopLocked()
+{
     m_running.store(false);
     if (m_hStopEvent) {
         SetEvent(m_hStopEvent);
     }
 
+    // Tambem junta threads que ja terminaram sozinhas (falha), evitando std::terminate.
     if (m_thread.joinable()) {
         m_thread.join();
     }
@@ -134,7 +150,17 @@ bool ProcessAudioCapture::IsRunning() const
     return m_running.load();
 }
 
-void ProcessAudioCapture::CaptureThreadFunc(DWORD processId, AudioDataCallback callback)
+static std::string FormatHr(const char* step, HRESULT hr)
+{
+    char buffer[160];
+    snprintf(buffer, sizeof(buffer), "%s falhou (HRESULT 0x%08lX).", step, static_cast<unsigned long>(hr));
+    return buffer;
+}
+
+void ProcessAudioCapture::CaptureThreadFunc(
+    DWORD processId,
+    AudioDataCallback callback,
+    std::shared_ptr<std::promise<std::string>> initPromise)
 {
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     bool coInitialized = SUCCEEDED(hr);
@@ -144,26 +170,32 @@ void ProcessAudioCapture::CaptureThreadFunc(DWORD processId, AudioDataCallback c
 
     ComPtr<IAudioClient> audioClient;
     ComPtr<IAudioCaptureClient> captureClient;
-    HANDLE hSamplesReady = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    WAVEFORMATEX* pMixFormat = nullptr;
+    ComPtr<AudioInterfaceCompletionHandler> completionHandler;
+    ComPtr<IActivateAudioInterfaceAsyncOperation> asyncOp;
+    bool initReported = false;
 
     auto cleanup = [&]() {
-        if (pMixFormat) {
-            CoTaskMemFree(pMixFormat);
-            pMixFormat = nullptr;
-        }
-        if (hSamplesReady) {
-            CloseHandle(hSamplesReady);
-            hSamplesReady = nullptr;
-        }
+        captureClient.Reset();
+        audioClient.Reset();
+        asyncOp.Reset();
+        completionHandler.Reset();
         if (hTask) {
             AvRevertMmThreadCharacteristics(hTask);
             hTask = nullptr;
         }
         if (coInitialized) {
             CoUninitialize();
+            coInitialized = false;
         }
         m_running.store(false);
+    };
+
+    auto fail = [&](const std::string& message) {
+        cleanup();
+        if (!initReported) {
+            initReported = true;
+            initPromise->set_value(message.empty() ? std::string("Falha desconhecida na captura.") : message);
+        }
     };
 
     // 1. Configurar parametros de ativacao do loopback de processo
@@ -178,8 +210,11 @@ void ProcessAudioCapture::CaptureThreadFunc(DWORD processId, AudioDataCallback c
     propVar.blob.cbSize = sizeof(activationParams);
     propVar.blob.pBlobData = reinterpret_cast<BYTE*>(&activationParams);
 
-    auto completionHandler = Microsoft::WRL::Make<AudioInterfaceCompletionHandler>();
-    ComPtr<IActivateAudioInterfaceAsyncOperation> asyncOp;
+    completionHandler = Microsoft::WRL::Make<AudioInterfaceCompletionHandler>();
+    if (!completionHandler) {
+        fail("Falha ao alocar o handler de ativacao.");
+        return;
+    }
 
     hr = ActivateAudioInterfaceAsync(
         VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
@@ -190,21 +225,25 @@ void ProcessAudioCapture::CaptureThreadFunc(DWORD processId, AudioDataCallback c
     );
 
     if (FAILED(hr)) {
-        cleanup();
+        fail(FormatHr("ActivateAudioInterfaceAsync", hr));
         return;
     }
 
     // Aguardar conclusao da ativacao (max 3 segundos)
     HANDLE waitHandles[2] = { completionHandler->m_hCompletedEvent, m_hStopEvent };
     DWORD waitResult = WaitForMultipleObjects(2, waitHandles, FALSE, 3000);
-    if (waitResult != WAIT_OBJECT_0 || FAILED(completionHandler->m_activateResult)) {
-        cleanup();
+    if (waitResult != WAIT_OBJECT_0) {
+        fail("A ativacao do loopback de processo nao respondeu.");
+        return;
+    }
+    if (FAILED(completionHandler->m_activateResult)) {
+        fail(FormatHr("Ativacao do loopback de processo", completionHandler->m_activateResult));
         return;
     }
 
     hr = completionHandler->m_activatedInterface.As(&audioClient);
     if (FAILED(hr) || !audioClient) {
-        cleanup();
+        fail(FormatHr("Obter IAudioClient", hr));
         return;
     }
 
@@ -226,7 +265,7 @@ void ProcessAudioCapture::CaptureThreadFunc(DWORD processId, AudioDataCallback c
     const REFERENCE_TIME bufferDuration = 10000000; // 1 segundo (em unidades de 100ns)
     hr = audioClient->Initialize(
         AUDCLNT_SHAREMODE_SHARED,
-        AUDCLNT_STREAMFLAGS_LOOPBACK,
+        AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
         bufferDuration,
         0,
         reinterpret_cast<WAVEFORMATEX*>(&wfx),
@@ -234,21 +273,24 @@ void ProcessAudioCapture::CaptureThreadFunc(DWORD processId, AudioDataCallback c
     );
 
     if (FAILED(hr)) {
-        cleanup();
+        fail(FormatHr("IAudioClient::Initialize", hr));
         return;
     }
 
     hr = audioClient->GetService(__uuidof(IAudioCaptureClient), (void**)&captureClient);
     if (FAILED(hr) || !captureClient) {
-        cleanup();
+        fail(FormatHr("IAudioClient::GetService", hr));
         return;
     }
 
     hr = audioClient->Start();
     if (FAILED(hr)) {
-        cleanup();
+        fail(FormatHr("IAudioClient::Start", hr));
         return;
     }
+
+    initReported = true;
+    initPromise->set_value(std::string());
 
     const uint32_t sampleRate = 48000;
     const uint32_t channels = 2;

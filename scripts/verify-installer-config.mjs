@@ -1,4 +1,22 @@
-const rawSignalingUrl = process.env.VITE_SIGNALING_URL?.trim();
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+let rawSignalingUrl = process.env.VITE_SIGNALING_URL?.trim();
+
+if (!rawSignalingUrl) {
+  const envProdPath = path.join(projectRoot, '.env.production');
+  if (fs.existsSync(envProdPath)) {
+    const content = fs.readFileSync(envProdPath, 'utf8');
+    const match = content.match(/^VITE_SIGNALING_URL=(.+)$/m);
+    if (match) {
+      rawSignalingUrl = match[1].trim();
+      process.env.VITE_SIGNALING_URL = rawSignalingUrl;
+    }
+  }
+}
 
 if (!rawSignalingUrl) {
   throw new Error(

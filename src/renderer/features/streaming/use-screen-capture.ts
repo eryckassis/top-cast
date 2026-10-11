@@ -172,18 +172,20 @@ export function useScreenCapture() {
       }
 
       let systemAudioTrack = stream.getAudioTracks()[0] ?? null;
+      let audioWarning: string | null = null;
 
-      // Se for janela e o áudio estiver marcado, iniciar captura de áudio isolada pelo processo
+      // Se for janela e o áudio estiver marcado, iniciar captura de áudio isolada pelo processo.
+      // Nunca recorre ao loopback geral do sistema aqui: isso incluiria áudio de chamadas.
       if (isWindow && state.includeSystemAudio) {
         try {
           const controller = await createProcessAudioTrack(state.preparedSourceId);
-          if (controller) {
-            processAudioRef.current = controller;
-            stream.addTrack(controller.track);
-            systemAudioTrack = controller.track;
-          }
+          processAudioRef.current = controller;
+          stream.addTrack(controller.track);
+          systemAudioTrack = controller.track;
         } catch (err) {
           console.warn('[ScreenCapture] Falha ao capturar áudio isolado do processo:', err);
+          const reason = err instanceof Error ? err.message : String(err);
+          audioWarning = `A janela está sendo transmitida sem áudio: ${reason}`;
         }
       }
 
@@ -216,7 +218,7 @@ export function useScreenCapture() {
         isStartingCapture: false,
         hasSystemAudio: systemAudioTrack !== null,
         systemAudioEnabled: systemAudioTrack !== null,
-        error: null,
+        error: audioWarning,
       }));
       return true;
     } catch (error) {

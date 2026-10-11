@@ -12,7 +12,7 @@
     "build": "tsc -p tsconfig.node.json && tsc -p tsconfig.server.json && tsc -p tsconfig.app.json && vite build --config vite.config.ts",
     "build:server": "tsc -p tsconfig.server.json",
     "build:native": "node-gyp rebuild",
-    "build:windows": "npm run build && node scripts/verify-production-build.mjs",
+    "build:windows": "npm run build:native && npm run build && node scripts/verify-production-build.mjs",
     "build:installer": "node scripts/verify-installer-config.mjs && npm run build:windows && electron-builder --win nsis --x64",
     "start": "node dist-server/server/index.js",
     "start:server": "node dist-server/server/index.js",
@@ -75,9 +75,14 @@
       "dist/**/*",
       "dist-electron/**/*",
       "dist-server/**/*",
+      "build/Release/audio_loopback.node",
       "package.json"
     ],
     "asar": true,
+    "asarUnpack": [
+      "build/Release/audio_loopback.node"
+    ],
+    "npmRebuild": false,
     "win": {
       "target": [
         {

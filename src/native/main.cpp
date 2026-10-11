@@ -39,6 +39,13 @@ Napi::Number GetProcessIdFromWindowHandle(const Napi::CallbackInfo& info) {
     return Napi::Number::New(env, pid);
 }
 
+static void ReleaseTsfn() {
+    if (g_tsfn) {
+        g_tsfn.Release();
+        g_tsfn = Napi::ThreadSafeFunction();
+    }
+}
+
 Napi::Boolean StartProcessLoopback(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 2 || !info[0].IsNumber() || !info[1].IsFunction()) {
@@ -49,9 +56,9 @@ Napi::Boolean StartProcessLoopback(const Napi::CallbackInfo& info) {
     DWORD pid = static_cast<DWORD>(info[0].As<Napi::Number>().Uint32Value());
     Napi::Function jsCallback = info[1].As<Napi::Function>();
 
-    if (g_tsfn) {
-        g_tsfn.Release();
-    }
+    // Garante que nenhuma thread de captura anterior use o TSFN antigo.
+    g_capture.Stop();
+    ReleaseTsfn();
 
     g_tsfn = Napi::ThreadSafeFunction::New(
         env,
@@ -91,12 +98,9 @@ Napi::Boolean StartProcessLoopback(const Napi::CallbackInfo& info) {
     }, error);
 
     if (!started) {
-        if (g_tsfn) {
-            g_tsfn.Release();
-        }
-        if (!error.empty()) {
-            Napi::Error::New(env, error).ThrowAsJavaScriptException();
-        }
+        ReleaseTsfn();
+        Napi::Error::New(env, error.empty() ? std::string("Falha ao iniciar captura WASAPI.") : error)
+            .ThrowAsJavaScriptException();
         return Napi::Boolean::New(env, false);
     }
 
@@ -106,9 +110,7 @@ Napi::Boolean StartProcessLoopback(const Napi::CallbackInfo& info) {
 Napi::Boolean StopProcessLoopback(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     g_capture.Stop();
-    if (g_tsfn) {
-        g_tsfn.Release();
-    }
+    ReleaseTsfn();
     return Napi::Boolean::New(env, true);
 }
 

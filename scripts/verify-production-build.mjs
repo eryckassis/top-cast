@@ -8,6 +8,8 @@ const requiredFiles = [
   'dist-electron/main/main.js',
   'dist-electron/preload/preload.cjs',
   'dist-server/server/index.js',
+  // Captura de áudio isolada por janela (sem áudio de chamadas) depende deste addon.
+  ...(process.platform === 'win32' ? ['build/Release/audio_loopback.node'] : []),
 ];
 
 for (const relativePath of requiredFiles) {

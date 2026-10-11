@@ -9,7 +9,10 @@
 #include <avrt.h>
 
 #include <atomic>
+#include <chrono>
+#include <cstdio>
 #include <functional>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -56,7 +59,11 @@ public:
     bool IsRunning() const;
 
 private:
-    void CaptureThreadFunc(DWORD processId, AudioDataCallback callback);
+    void CaptureThreadFunc(
+        DWORD processId,
+        AudioDataCallback callback,
+        std::shared_ptr<std::promise<std::string>> initPromise);
+    void StopLocked();
 
     std::atomic<bool> m_running{ false };
     std::thread m_thread;
