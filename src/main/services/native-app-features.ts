@@ -11,6 +11,8 @@ const LEAVE_ROOM_SHORTCUT_CHANNEL = 'app:leave-room-shortcut';
 const LEAVE_ROOM_SHORTCUT = 'CommandOrControl+Shift+L';
 const MAX_DISPLAY_NAME_LENGTH = 32;
 const COPY_TO_CLIPBOARD_CHANNEL = 'app:copy-to-clipboard';
+const TOGGLE_FULLSCREEN_CHANNEL = 'app:toggle-fullscreen';
+const IS_FULLSCREEN_CHANNEL = 'app:is-fullscreen';
 
 let activeWindow: BrowserWindow | null = null;
 let handlersRegistered = false;
@@ -22,6 +24,25 @@ export function configureNativeAppFeatures(window: BrowserWindow): void {
     return;
   }
   handlersRegistered = true;
+
+  ipcMain.handle(TOGGLE_FULLSCREEN_CHANNEL, (event): boolean => {
+    if (!isAuthorizedSender(event.sender, event.senderFrame)) {
+      throw new Error('Unauthorized renderer requested fullscreen toggle');
+    }
+    if (!activeWindow || activeWindow.isDestroyed()) {
+      return false;
+    }
+    const nextState = !activeWindow.isFullScreen();
+    activeWindow.setFullScreen(nextState);
+    return nextState;
+  });
+
+  ipcMain.handle(IS_FULLSCREEN_CHANNEL, (event): boolean => {
+    if (!isAuthorizedSender(event.sender, event.senderFrame)) {
+      throw new Error('Unauthorized renderer requested fullscreen state');
+    }
+    return Boolean(activeWindow && !activeWindow.isDestroyed() && activeWindow.isFullScreen());
+  });
 
     ipcMain.handle(COPY_TO_CLIPBOARD_CHANNEL, (event, rawText: unknown): boolean => {
     if (!isAuthorizedSender(event.sender, event.senderFrame)) {

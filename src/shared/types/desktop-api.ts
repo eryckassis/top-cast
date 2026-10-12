@@ -44,4 +44,6 @@ export interface TopCastApi {
   onLeaveRoomShortcut: (callback: () => void) => () => void;
   screenCapture: ScreenCaptureApi;
   processAudio: ProcessAudioApi;
+  toggleFullScreen?: () => Promise<boolean>;
+  isFullScreen?: () => Promise<boolean>;
 }

@@ -19,7 +19,7 @@
     "verify:production": "node scripts/verify-production-build.mjs",
     "test:signaling-smoke": "node scripts/smoke-test-signaling.mjs",
     "preview": "vite preview --config vite.config.ts --host",
-    "test": "tsx --test src/server/services/room-service.test.ts src/server/services/signaling-validation.test.ts src/server/services/ice-credentials.test.ts tests/ice-configuration.test.ts tests/reconnect-identity.test.ts tests/room-ui.test.ts tests/participant-events.test.ts tests/theme.test.ts tests/welcome-dialog.test.ts tests/tooltip.test.ts tests/source-thumbnail.test.ts tests/window-titlebar.test.ts tests/voxel-avatar.test.ts"
+    "test": "tsx --test src/server/services/room-service.test.ts src/server/services/signaling-validation.test.ts src/server/services/ice-credentials.test.ts tests/ice-configuration.test.ts tests/reconnect-identity.test.ts tests/room-ui.test.ts tests/participant-events.test.ts tests/theme.test.ts tests/welcome-dialog.test.ts tests/tooltip.test.ts tests/source-thumbnail.test.ts tests/voxel-avatar.test.ts tests/new-ui.test.ts tests/sidebar-audio-ping.test.ts tests/soundboard.test.ts"
   },
   "keywords": [
     "electron",
@@ -37,6 +37,7 @@
     "@radix-ui/react-checkbox": "^1.3.12",
     "@radix-ui/react-dialog": "^1.2.0",
     "@radix-ui/react-select": "^2.3.8",
+    "@radix-ui/react-slider": "^1.6.0",
     "@radix-ui/react-slot": "^1.4.0",
     "@radix-ui/react-tooltip": "^1.3.0",
     "class-variance-authority": "^0.7.1",

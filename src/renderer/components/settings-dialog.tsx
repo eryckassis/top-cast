@@ -57,7 +57,7 @@ export function SettingsDialog({
                 size="icon"
                 aria-label="Abrir configurações do aplicativo"
                 className={cn(
-                  'h-9 w-9 rounded-xl bg-slate-900/60 text-slate-400 transition-all hover:bg-slate-800 hover:text-slate-100 focus-visible:ring-blue-400',
+                  'h-9 w-9 rounded-xl border border-border/40 bg-slate-900/60 text-slate-400 transition-all hover:bg-slate-800 hover:text-slate-100 focus-visible:ring-primary',
                   triggerClassName,
                 )}
               >
@@ -69,12 +69,12 @@ export function SettingsDialog({
         </Tooltip>
       )}
 
-      <DialogContent className="max-w-2xl bg-slate-900 p-0 text-slate-100 sm:rounded-2xl">
+      <DialogContent className="max-w-2xl overflow-hidden rounded-2xl border border-border/40 bg-slate-900/95 p-0 text-slate-100 shadow-2xl backdrop-blur-xl">
         {/* Header */}
-        <div className="border-b border-slate-800/80 px-6 py-5">
+        <div className="border-b border-border/40 px-6 py-5">
           <DialogHeader className="text-left">
             <div className="flex items-center gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-500/10 text-blue-400">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-sm">
                 <Settings className="h-5 w-5" />
               </span>
               <div>
@@ -93,7 +93,7 @@ export function SettingsDialog({
         <div className="max-h-[65vh] overflow-y-auto px-6 py-5">
           <section aria-labelledby="theme-section-title">
             <div className="flex items-center gap-2 pb-2">
-              <Palette className="h-4 w-4 text-blue-400" />
+              <Palette className="h-4 w-4 text-primary" />
               <h3 id="theme-section-title" className="text-sm font-semibold tracking-tight text-slate-200">
                 Tema de Cores
               </h3>
@@ -118,23 +118,23 @@ export function SettingsDialog({
                     aria-checked={isSelected}
                     onClick={() => handleSelectTheme(themeOption.id)}
                     className={cn(
-                      'group relative flex flex-col items-start rounded-xl p-3.5 text-left border transition-all duration-200',
-                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
+                      'group relative flex flex-col items-start rounded-xl p-3.5 text-left border transition-all duration-150',
+                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                       isSelected
-                        ? 'border-blue-500/50 bg-blue-500/[0.10] shadow-md shadow-blue-500/10'
-                        : 'border-slate-800/80 bg-slate-950/50 hover:border-slate-700/80 hover:bg-slate-950/80',
+                        ? 'border-primary/50 bg-primary/10 shadow-sm'
+                        : 'border-border/40 bg-slate-950/60 backdrop-blur-sm hover:border-border/80 hover:bg-slate-950/80',
                     )}
                   >
-                    {/* Badge de Selecionado */}
+                    {/* Badge de Selecionado com Lucide Check padronizado */}
                     {isSelected && (
-                      <span className="absolute right-2.5 top-2.5 grid h-5 w-5 place-items-center rounded-full bg-blue-500 text-white shadow-sm ring-2 ring-slate-950">
-                        <Check className="h-3 w-3 stroke-[3]" />
+                      <span className="absolute right-2.5 top-2.5 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm ring-2 ring-slate-950">
+                        <Check className="h-3 w-3" />
                       </span>
                     )}
 
                     {/* Miniatura Swatch da Paleta */}
                     <div
-                      className="mb-3 flex h-14 w-full items-center justify-between rounded-lg p-2 border border-slate-800/80 shadow-inner"
+                      className="mb-3 flex h-14 w-full items-center justify-between rounded-lg p-2 border border-border/40 shadow-inner"
                       style={{
                         backgroundColor: themeOption.bgColor,
                       }}
@@ -185,12 +185,13 @@ export function SettingsDialog({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end border-t border-slate-800/80 px-6 py-4">
+        <div className="flex justify-end border-t border-border/40 px-6 py-4 bg-slate-950/40">
           <DialogFooter className="sm:justify-end">
             <Button
               type="button"
+              variant="outline"
               onClick={() => setOpen(false)}
-              className="bg-slate-800/50 text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+              className="rounded-xl border-border/40 bg-slate-800/60 text-slate-300 hover:bg-slate-800 hover:text-slate-100"
             >
               Fechar
             </Button>
@@ -200,4 +201,3 @@ export function SettingsDialog({
     </Dialog>
   );
 }
-

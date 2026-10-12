@@ -12,21 +12,27 @@ const __dirname = path.dirname(__filename);
 export function createMainWindow(): BrowserWindow {
   Menu.setApplicationMenu(null);
 
-  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    const allowedPermissions = [
-      'display-capture',
-      'media',
-      'clipboard-read',
-      'clipboard-write',
-      'clipboard-sanitized-write',
-    ];
+  const allowedPermissions = [
+    'display-capture',
+    'media',
+    'clipboard-read',
+    'clipboard-write',
+    'clipboard-sanitized-write',
+    'fullscreen',
+    'automatic-fullscreen',
+  ];
 
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     if (allowedPermissions.includes(permission)) {
       callback(true);
       return;
     }
 
     callback(false);
+  });
+
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+    return allowedPermissions.includes(permission);
   });
 
   const mainWindow = new BrowserWindow({
@@ -37,11 +43,24 @@ export function createMainWindow(): BrowserWindow {
     backgroundColor: '#10131a',
     title: APP_NAME,
     autoHideMenuBar: true,
+    fullscreenable: true,
     webPreferences: {
       preload: path.join(__dirname, '../../preload/preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+
+  mainWindow.webContents.on('enter-html-full-screen', () => {
+    if (!mainWindow.isDestroyed() && !mainWindow.isFullScreen()) {
+      mainWindow.setFullScreen(true);
+    }
+  });
+
+  mainWindow.webContents.on('leave-html-full-screen', () => {
+    if (!mainWindow.isDestroyed() && mainWindow.isFullScreen()) {
+      mainWindow.setFullScreen(false);
+    }
   });
 
   configureNativeAppFeatures(mainWindow);

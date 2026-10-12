@@ -42,14 +42,14 @@ function AnimatedWaveBackground() {
       aria-hidden="true"
       className="pointer-events-none absolute inset-0 overflow-hidden select-none"
     >
-      {/* 1. Iluminação Ambiente Sincronizada com a Paleta Ativa */}
-      <div className="absolute -top-32 -left-20 h-[480px] w-[640px] rounded-full bg-[radial-gradient(ellipse_at_center,var(--glow-accent-1)_0%,transparent_65%)] blur-3xl opacity-80" />
-      <div className="animate-glow-pulse absolute -top-36 left-1/2 h-[520px] w-[900px] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,hsl(var(--primary)/0.18)_0%,hsl(var(--primary-600)/0.06)_45%,transparent_70%)] blur-2xl" />
-      <div className="absolute top-1/4 -right-24 h-[440px] w-[580px] rounded-full bg-[radial-gradient(ellipse_at_center,var(--glow-accent-2)_0%,transparent_65%)] blur-3xl opacity-70" />
-      <div className="absolute -bottom-24 left-1/2 h-[450px] w-[1000px] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,hsl(var(--primary-700)/0.08)_0%,transparent_65%)] blur-3xl" />
+      {/* 1. Iluminação Ambiente Discreta e Profissional (sem brilhos excessivos) */}
+      <div className="absolute -top-32 -left-20 h-[480px] w-[640px] rounded-full bg-[radial-gradient(ellipse_at_center,var(--glow-accent-1)_0%,transparent_65%)] blur-3xl opacity-50" />
+      <div className="animate-glow-pulse absolute -top-36 left-1/2 h-[520px] w-[900px] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,hsl(var(--primary)/0.12)_0%,hsl(var(--primary-600)/0.03)_45%,transparent_70%)] blur-2xl opacity-60" />
+      <div className="absolute top-1/4 -right-24 h-[440px] w-[580px] rounded-full bg-[radial-gradient(ellipse_at_center,var(--glow-accent-2)_0%,transparent_65%)] blur-3xl opacity-40" />
+      <div className="absolute -bottom-24 left-1/2 h-[450px] w-[1000px] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,hsl(var(--primary-700)/0.05)_0%,transparent_65%)] blur-3xl opacity-50" />
 
       {/* 2. Onda 1 (Profundidade & Camada de Fundo - Swell contínuo fluido) */}
-      <div className="absolute bottom-0 left-0 h-64 sm:h-80 lg:h-96 w-full overflow-hidden opacity-80">
+      <div className="absolute bottom-0 left-0 h-64 sm:h-80 lg:h-96 w-full overflow-hidden opacity-70">
         <svg
           viewBox="0 0 2400 320"
           preserveAspectRatio="none"
@@ -57,9 +57,9 @@ function AnimatedWaveBackground() {
         >
           <defs>
             <linearGradient id="tc-wave-grad-1" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="var(--wave-1-color)" stopOpacity="0.15" />
-              <stop offset="45%" stopColor="hsl(var(--primary-700))" stopOpacity="0.08" />
-              <stop offset="85%" stopColor="var(--wave-1-deep)" stopOpacity="0.03" />
+              <stop offset="0%" stopColor="var(--wave-1-color)" stopOpacity="0.12" />
+              <stop offset="45%" stopColor="hsl(var(--primary-700))" stopOpacity="0.06" />
+              <stop offset="85%" stopColor="var(--wave-1-deep)" stopOpacity="0.02" />
               <stop offset="100%" stopColor="hsl(var(--background))" stopOpacity="0.0" />
             </linearGradient>
           </defs>
@@ -68,13 +68,13 @@ function AnimatedWaveBackground() {
             fill="url(#tc-wave-grad-1)"
             stroke="var(--wave-1-stroke)"
             strokeWidth="1.2"
-            strokeOpacity="0.26"
+            strokeOpacity="0.22"
           />
         </svg>
       </div>
 
       {/* 3. Onda 2 (Camada Intermediária - Contra-fluxo suave com tom médio) */}
-      <div className="absolute bottom-0 left-0 h-56 sm:h-72 lg:h-88 w-full overflow-hidden opacity-75">
+      <div className="absolute bottom-0 left-0 h-56 sm:h-72 lg:h-88 w-full overflow-hidden opacity-65">
         <svg
           viewBox="0 0 2400 320"
           preserveAspectRatio="none"
@@ -82,9 +82,9 @@ function AnimatedWaveBackground() {
         >
           <defs>
             <linearGradient id="tc-wave-grad-2" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="var(--wave-2-color)" stopOpacity="0.14" />
-              <stop offset="35%" stopColor="hsl(var(--primary-500))" stopOpacity="0.09" />
-              <stop offset="75%" stopColor="hsl(var(--background))" stopOpacity="0.03" />
+              <stop offset="0%" stopColor="var(--wave-2-color)" stopOpacity="0.11" />
+              <stop offset="35%" stopColor="hsl(var(--primary-500))" stopOpacity="0.07" />
+              <stop offset="75%" stopColor="hsl(var(--background))" stopOpacity="0.02" />
               <stop offset="100%" stopColor="hsl(var(--background))" stopOpacity="0.0" />
             </linearGradient>
           </defs>
@@ -93,13 +93,13 @@ function AnimatedWaveBackground() {
             fill="url(#tc-wave-grad-2)"
             stroke="var(--wave-2-stroke)"
             strokeWidth="1.1"
-            strokeOpacity="0.28"
+            strokeOpacity="0.24"
           />
         </svg>
       </div>
 
       {/* 4. Onda 3 (Primeiro Plano - Destaque luminoso acolhedor) */}
-      <div className="absolute bottom-0 left-0 h-48 sm:h-64 lg:h-76 w-full overflow-hidden opacity-90">
+      <div className="absolute bottom-0 left-0 h-48 sm:h-64 lg:h-76 w-full overflow-hidden opacity-80">
         <svg
           viewBox="0 0 2400 320"
           preserveAspectRatio="none"
@@ -107,10 +107,10 @@ function AnimatedWaveBackground() {
         >
           <defs>
             <linearGradient id="tc-wave-grad-3" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="var(--wave-3-color)" stopOpacity="0.18" />
-              <stop offset="25%" stopColor="hsl(var(--primary))" stopOpacity="0.12" />
-              <stop offset="65%" stopColor="var(--wave-3-mid)" stopOpacity="0.05" />
-              <stop offset="100%" stopColor="hsl(var(--background))" stopOpacity="0.35" />
+              <stop offset="0%" stopColor="var(--wave-3-color)" stopOpacity="0.14" />
+              <stop offset="25%" stopColor="hsl(var(--primary))" stopOpacity="0.09" />
+              <stop offset="65%" stopColor="var(--wave-3-mid)" stopOpacity="0.04" />
+              <stop offset="100%" stopColor="hsl(var(--background))" stopOpacity="0.25" />
             </linearGradient>
           </defs>
           <path
@@ -118,15 +118,15 @@ function AnimatedWaveBackground() {
             fill="url(#tc-wave-grad-3)"
             stroke="var(--wave-3-stroke)"
             strokeWidth="1.2"
-            strokeOpacity="0.36"
+            strokeOpacity="0.28"
           />
         </svg>
       </div>
 
-      {/* 5. Overlays de contraste & proteção visual do conteúdo da Home */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,transparent_30%,hsl(var(--background))_92%)]" />
-      <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/75" />
-      <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--primary))_1px,transparent_1px)] [background-size:32px_32px] opacity-[0.035]" />
+      {/* 5. Overlays de contraste & proteção visual do conteúdo */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,transparent_35%,hsl(var(--background))_92%)]" />
+      <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/80" />
+      <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--primary))_1px,transparent_1px)] [background-size:32px_32px] opacity-[0.025]" />
     </div>
   );
 }
@@ -156,7 +156,6 @@ export default function HomePage({
   const [serverError, setServerError] = useState('');
   const [isCopiedServerUrl, setIsCopiedServerUrl] = useState(false);
   const [avatarSeed, setAvatarSeed] = useState(() => getOrCreateLocalAvatarSeed());
-  const [isRolling, setIsRolling] = useState(false);
 
   const isConnected = roomIsActive !== null;
   const isCustomUrl = signalingServerUrl !== DEFAULT_SIGNALING_URL;
@@ -165,11 +164,9 @@ export default function HomePage({
   useEffect(() => setServerInput(signalingServerUrl), [signalingServerUrl]);
 
   function handleRandomizeAvatar() {
-    setIsRolling(true);
     const nextSeed = generateRandomAvatarSeed();
     saveLocalAvatarSeed(nextSeed);
     setAvatarSeed(nextSeed);
-    window.setTimeout(() => setIsRolling(false), 500);
   }
 
   async function handleCopyServerUrl() {
@@ -230,65 +227,61 @@ export default function HomePage({
     <main className="relative flex h-full min-h-full flex-col items-center justify-start overflow-x-hidden overflow-y-auto bg-background px-5 py-8 text-slate-50 sm:px-8 sm:py-12">
       <AnimatedWaveBackground />
 
-      {/* Botão de Configurações no canto superior */}
+      {/* Botão de Configurações com Glass Effect */}
       <div className="absolute right-4 top-4 z-20 [-webkit-app-region:no-drag] sm:right-6 sm:top-6">
         <SettingsDialog />
       </div>
 
       <div className="relative z-10 my-auto w-full max-w-[520px]">
-        {/* Marca / Identidade do App */}
-        <header className="mb-8 flex items-center justify-center gap-2.5 [-webkit-app-region:drag]">
-          <div className="grid h-10 w-10 place-items-center rounded-2xl bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20">
+        {/* Identidade do App */}
+        <header className="mb-6 flex items-center justify-center gap-2.5 [-webkit-app-region:drag]">
+          <div className="grid h-10 w-10 place-items-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-sm">
             <Radio className="h-5 w-5" />
           </div>
           <span className="text-xl font-bold tracking-tight text-white">{appInfo.name}</span>
-          <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-400">
+          <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
             Beta
           </span>
         </header>
 
         {/* Hero Section */}
         <section aria-labelledby="welcome-title" className="text-center">
-          <h1 id="welcome-title" className="mt-4 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            Sua tela ao vivo, <span className="bg-gradient-to-r from-blue-400 to-blue-200 bg-clip-text text-transparent">nessa bosta.</span>
+          <h1 id="welcome-title" className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            Sua tela ao vivo, <span className="bg-gradient-to-r from-blue-400 via-primary to-blue-200 bg-clip-text text-transparent">simples e fluida.</span>
           </h1>
-          <p className="mx-auto mt-3 max-w-md text-xs leading-relaxed text-slate-400 sm:text-sm">
-            Transmissão ponto a ponto de baixa latência com áudio do sistema.
+          <p className="mx-auto mt-2.5 max-w-md text-xs leading-relaxed text-slate-400 sm:text-sm">
+            Transmissão ponto a ponto de baixa latência com áudio do sistema em tempo real.
           </p>
         </section>
 
-        {/* Perfil do Usuário com Avatar Voxel e Randomizador */}
-        <div className="mt-8 rounded-2xl border border-slate-800/80 bg-slate-900/50 p-4 shadow-lg shadow-black/20 backdrop-blur-sm">
+        {/* Perfil do Usuário com Efeito Glass */}
+        <div className="mt-7 rounded-2xl border border-border/40 bg-slate-900/50 p-4 shadow-md backdrop-blur-xl">
           <label htmlFor="display-name" className="mb-2.5 block text-left text-xs font-semibold uppercase tracking-wider text-slate-300">
             Seu Perfil
           </label>
           <div className="flex items-center gap-3">
-            {/* Avatar DiceBear Voxel Art quadrado com bordas arredondadas */}
+            {/* Avatar DiceBear Voxel Art */}
             <div
-              className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950/80 shadow-md ring-1 ring-slate-800"
+              className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/40 bg-slate-950/80 shadow-inner ring-1 ring-border/50"
               aria-label={`Avatar de ${displayName || 'Você'}`}
             >
               <VoxelAvatar displayName={displayName || 'Você'} seed={avatarSeed} />
             </div>
 
-            {/* Botão de dado para sortear avatar à direita do avatar */}
+            {/* Botão de dado para sortear avatar */}
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
                     onClick={handleRandomizeAvatar}
-                    className="group grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-700/80 bg-slate-950/80 text-slate-300 shadow-sm transition-colors hover:border-blue-500/60 hover:bg-slate-800/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border/40 bg-slate-950/70 text-slate-400 shadow-sm transition-colors duration-150 hover:border-border/80 hover:bg-slate-800/70 hover:text-slate-100 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     aria-label="Sortear outro avatar"
                   >
-                    <Dice5
-                      className={`h-5 w-5 transition-transform duration-500 ease-out ${
-                        isRolling ? 'rotate-[360deg]' : 'group-hover:rotate-180'
-                      }`}
-                    />
+                    <Dice5 className="h-5 w-5" />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="top">Sortear outro avatar</TooltipContent>
+                <TooltipContent side="top">Sortear avatar</TooltipContent>
               </Tooltip>
             </TooltipProvider>
 
@@ -302,7 +295,7 @@ export default function HomePage({
                 value={displayName}
                 onChange={(event) => onDisplayNameChange(event.currentTarget.value)}
                 placeholder="Como as pessoas devem chamar você?"
-                className="h-11 w-full rounded-xl border border-slate-700/80 bg-slate-950/80 px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20"
+                className="h-11 w-full rounded-xl border border-border/40 bg-slate-950/80 px-4 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors"
               />
             </div>
           </div>
@@ -312,7 +305,7 @@ export default function HomePage({
         </div>
 
         {/* Ações da sala */}
-        <section aria-label="Ações da sala" className="mt-5 grid gap-3">
+        <section aria-label="Ações da sala" className="mt-4 grid gap-3">
           {(() => {
             const isNameEmpty = displayName.trim().length === 0;
             const createRoomTooltipText = roomIsActive
@@ -333,16 +326,16 @@ export default function HomePage({
                           type="button"
                           variant="outline"
                           disabled={true}
-                          className="group relative h-auto w-full justify-between rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 text-left text-slate-100 shadow-sm backdrop-blur-sm opacity-50 cursor-not-allowed"
+                          className="group relative h-auto w-full justify-between rounded-2xl border border-border/40 bg-slate-900/50 p-4 text-left text-slate-100 shadow-sm backdrop-blur-xl opacity-50 cursor-not-allowed"
                         >
                           <span className="flex items-center gap-3.5">
-                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20">
+                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
                               <Radio className="h-5 w-5" />
                             </span>
                             <span>
                               <span className="flex items-center gap-2">
                                 <span className="text-sm font-semibold text-white">Criar sala</span>
-                                <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-400 ring-1 ring-blue-500/20">
+                                <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                                   Host
                                 </span>
                               </span>
@@ -369,16 +362,16 @@ export default function HomePage({
                 variant="outline"
                 disabled={false}
                 onClick={onCreateRoom}
-                className="group relative h-auto w-full justify-between rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 text-left text-slate-100 shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-blue-500/30 hover:bg-slate-900/90 hover:shadow-lg hover:shadow-blue-500/5 focus-visible:ring-blue-400"
+                className="group relative h-auto w-full justify-between rounded-2xl border border-border/40 bg-slate-900/50 p-4 text-left text-slate-100 shadow-sm backdrop-blur-xl transition-all duration-150 hover:border-primary/40 hover:bg-slate-900/80 focus-visible:ring-primary"
               >
                 <span className="flex items-center gap-3.5">
-                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20 transition-colors group-hover:bg-blue-500/20">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
                     <Radio className="h-5 w-5" />
                   </span>
                   <span>
                     <span className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-white">Criar sala</span>
-                      <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-400 ring-1 ring-blue-500/20">
+                      <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                         Host
                       </span>
                     </span>
@@ -387,7 +380,7 @@ export default function HomePage({
                     </span>
                   </span>
                 </span>
-                <ArrowRight className="h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200 group-hover:text-slate-300" />
+                <ArrowRight className="h-4 w-4 shrink-0 text-slate-500 transition-transform duration-150 group-hover:text-slate-300" />
               </Button>
             );
           })()}
@@ -397,16 +390,16 @@ export default function HomePage({
             variant="outline"
             disabled={displayName.trim().length === 0}
             onClick={onJoinRoom}
-            className="group relative h-auto w-full justify-between rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 text-left text-slate-100 shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-blue-500/30 hover:bg-slate-900/90 hover:shadow-lg hover:shadow-blue-500/5 focus-visible:ring-blue-400 disabled:opacity-50"
+            className="group relative h-auto w-full justify-between rounded-2xl border border-border/40 bg-slate-900/50 p-4 text-left text-slate-100 shadow-sm backdrop-blur-xl transition-all duration-150 hover:border-primary/40 hover:bg-slate-900/80 focus-visible:ring-primary disabled:opacity-50"
           >
             <span className="flex items-center gap-3.5">
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-800 text-slate-200 ring-1 ring-slate-700/60 transition-colors group-hover:bg-slate-700 group-hover:text-white group-hover:ring-blue-500/30">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-border/40 bg-slate-800 text-slate-200 transition-colors group-hover:bg-slate-700 group-hover:text-white">
                 <Users className="h-5 w-5" />
               </span>
               <span>
                 <span className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-white">Entrar com código</span>
-                  <span className="rounded-full bg-slate-800/80 px-2 py-0.5 text-[10px] font-medium text-slate-300 ring-1 ring-slate-700/60">
+                  <span className="rounded-full border border-border/40 bg-slate-800/80 px-2 py-0.5 text-[10px] font-medium text-slate-300">
                     Convidado
                   </span>
                 </span>
@@ -415,23 +408,23 @@ export default function HomePage({
                 </span>
               </span>
             </span>
-            <ArrowRight className="h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200 group-hover:text-slate-300" />
+            <ArrowRight className="h-4 w-4 shrink-0 text-slate-500 transition-transform duration-150 group-hover:text-slate-300" />
           </Button>
         </section>
 
-        {/* Seção Servidor de Salas */}
+        {/* Seção Servidor de Salas com Glass Styling */}
         <section
           aria-labelledby="server-section-title"
-          className="mt-6 rounded-2xl border border-slate-800/80 bg-slate-900/50 p-4 sm:p-5 shadow-lg shadow-black/20 backdrop-blur-sm"
+          className="mt-5 rounded-2xl border border-border/40 bg-slate-900/50 p-4 sm:p-5 shadow-md backdrop-blur-xl"
         >
           {/* Header com status online/conectando */}
-          <div className="flex items-center justify-between gap-3 border-b border-slate-800/80 pb-3.5">
+          <div className="flex items-center justify-between gap-3 border-b border-border/40 pb-3.5">
             <div className="flex min-w-0 items-center gap-3">
               <span
-                className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${
+                className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${
                   isConnected
-                    ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20'
-                    : 'bg-amber-500/10 text-amber-300 ring-1 ring-amber-500/20 animate-pulse'
+                    ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                    : 'border-amber-500/20 bg-amber-500/10 text-amber-300 animate-pulse'
                 }`}
               >
                 <Server className="h-4 w-4" />
@@ -454,10 +447,10 @@ export default function HomePage({
             {/* Badge de status */}
             <div className="flex shrink-0 items-center gap-2">
               <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${
                   isConnected
-                    ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/20'
-                    : 'bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/20'
+                    ? 'border-emerald-500/20 bg-emerald-500/15 text-emerald-300'
+                    : 'border-amber-500/20 bg-amber-500/15 text-amber-300'
                 }`}
               >
                 <span className="relative flex h-1.5 w-1.5">
@@ -478,7 +471,7 @@ export default function HomePage({
             </div>
           </div>
 
-          {/* Formulário com Input estilizado */}
+          {/* Formulário com Input */}
           <form onSubmit={handleServerSubmit} className="mt-3.5">
             <div className="flex flex-col gap-2 sm:flex-row">
               <div className="relative min-w-0 flex-1">
@@ -496,10 +489,10 @@ export default function HomePage({
                   }}
                   placeholder="http://127.0.0.1:3001 ou http://192.168.1.x:3001"
                   autoComplete="url"
-                  className="h-10 w-full rounded-xl border border-slate-700/80 bg-slate-950/80 pl-9 pr-10 font-mono text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 sm:text-sm"
+                  className="h-10 w-full rounded-xl border border-border/40 bg-slate-950/80 pl-9 pr-10 font-mono text-xs text-slate-100 outline-none placeholder:text-slate-600 focus:border-primary focus:ring-2 focus:ring-primary/20 sm:text-sm transition-colors"
                 />
 
-                {/* Botão de copiar endereço ativo dentro do input */}
+                {/* Botão de copiar endereço */}
                 <div className="absolute inset-y-0 right-1 flex items-center">
                   <TooltipProvider>
                     <Tooltip>
@@ -525,14 +518,14 @@ export default function HomePage({
                 </div>
               </div>
 
-              {/* Botão de ação Aplicar / Conectar */}
+              {/* Botão Aplicar / Conectar */}
               <Button
                 type="submit"
                 disabled={isCurrentUrl && !serverError}
                 className={`h-10 shrink-0 gap-1.5 rounded-xl px-4 font-medium transition-all ${
                   isCurrentUrl && !serverError
-                    ? 'bg-slate-800/50 text-slate-400'
-                    : 'bg-blue-600 text-white hover:bg-blue-500 shadow-md shadow-blue-500/20'
+                    ? 'bg-slate-800/60 text-slate-400'
+                    : 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90'
                 }`}
               >
                 {isCurrentUrl && !serverError ? (
@@ -549,7 +542,7 @@ export default function HomePage({
               </Button>
             </div>
 
-            {/* Mensagem de Erro de validação */}
+            {/* Mensagem de Erro */}
             {serverError && (
               <p role="alert" className="mt-2.5 flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-400/10 px-3 py-2 text-xs leading-5 text-red-200">
                 <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
@@ -557,13 +550,12 @@ export default function HomePage({
               </p>
             )}
 
-            {/* Rodapé com dicas de rede local e atalho para restaurar padrão */}
+            {/* Rodapé com dicas */}
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
               <span className="flex items-center gap-1.5">
                 Para rede local, use o IP deste computador (ex: <code className="rounded bg-slate-800/80 px-1.5 py-0.5 font-mono text-[11px] text-slate-300">192.168.1.x:3001</code>).
               </span>
 
-              {/* Botão de Restaurar Padrão quando o servidor for customizado */}
               {isCustomUrl && (
                 <TooltipProvider>
                   <Tooltip>
@@ -571,7 +563,7 @@ export default function HomePage({
                       <button
                         type="button"
                         onClick={handleRestoreDefault}
-                        className="inline-flex items-center gap-1.5 font-medium text-blue-400 hover:text-blue-300 hover:underline text-[11px]"
+                        className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline text-[11px]"
                       >
                         <RotateCcw className="h-3 w-3" />
                         Restaurar padrão

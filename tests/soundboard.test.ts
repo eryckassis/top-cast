@@ -1,0 +1,125 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  SOUNDBOARD_CLIPS,
+  getSoundboardVolume,
+  saveSoundboardVolume,
+  DEFAULT_SOUNDBOARD_VOLUME,
+  soundboardManager,
+} from '../src/renderer/lib/soundboard.js';
+
+describe('Soundboard & Top Sounds (Discord-style)', () => {
+  const roomPagePath = path.resolve('src/renderer/pages/RoomPage.tsx');
+  const roomPageContent = fs.readFileSync(roomPagePath, 'utf8');
+  const topSoundsDropdownPath = path.resolve('src/renderer/components/top-sounds-dropdown.tsx');
+  const topSoundsDropdownContent = fs.readFileSync(topSoundsDropdownPath, 'utf8');
+
+  it('organizes audio files into public/sounds and src/renderer/assets/sounds directories', () => {
+    const publicBark = path.resolve('public/sounds/bark-fart-made-with-Voicemod.mp3');
+    const publicDry = path.resolve('public/sounds/dry-fart-made-with-Voicemod.mp3');
+    const assetBark = path.resolve('src/renderer/assets/sounds/bark-fart-made-with-Voicemod.mp3');
+    const assetDry = path.resolve('src/renderer/assets/sounds/dry-fart-made-with-Voicemod.mp3');
+
+    assert.ok(fs.existsSync(publicBark), 'public/sounds/bark-fart-made-with-Voicemod.mp3 must exist');
+    assert.ok(fs.existsSync(publicDry), 'public/sounds/dry-fart-made-with-Voicemod.mp3 must exist');
+    assert.ok(fs.existsSync(assetBark), 'src/renderer/assets/sounds/bark-fart-made-with-Voicemod.mp3 must exist');
+    assert.ok(fs.existsSync(assetDry), 'src/renderer/assets/sounds/dry-fart-made-with-Voicemod.mp3 must exist');
+
+    assert.ok(fs.statSync(publicBark).size > 0, 'public bark fart must not be empty');
+    assert.ok(fs.statSync(publicDry).size > 0, 'public dry fart must not be empty');
+    assert.ok(fs.statSync(assetBark).size > 0, 'asset bark fart must not be empty');
+    assert.ok(fs.statSync(assetDry).size > 0, 'asset dry fart must not be empty');
+
+    // Loose root files must have been cleaned up
+    const rootBark = path.resolve('bark-fart-made-with-Voicemod.mp3');
+    const rootDry = path.resolve('dry-fart-made-with-Voicemod.mp3');
+    assert.ok(!fs.existsSync(rootBark), 'root bark fart should be moved to correct folders');
+    assert.ok(!fs.existsSync(rootDry), 'root dry fart should be moved to correct folders');
+  });
+
+  it('defines soundboard clips with Bark Fart and Dry Fart from Voicemod and emojis', () => {
+    assert.equal(SOUNDBOARD_CLIPS.length, 2);
+
+    const barkClip = SOUNDBOARD_CLIPS.find((c) => c.id === 'bark-fart');
+    assert.ok(barkClip, 'bark-fart clip must exist');
+    assert.equal(barkClip.name.toLowerCase(), 'bark fart');
+    assert.equal(barkClip.emoji, '🐶');
+    assert.equal(barkClip.fileName, 'bark-fart-made-with-Voicemod.mp3');
+    assert.ok(barkClip.src.includes('bark-fart-made-with-Voicemod.mp3'));
+
+    const dryClip = SOUNDBOARD_CLIPS.find((c) => c.id === 'dry-fart');
+    assert.ok(dryClip, 'dry-fart clip must exist');
+    assert.equal(dryClip.name.toLowerCase(), 'dry fart');
+    assert.equal(dryClip.emoji, '💨');
+    assert.equal(dryClip.fileName, 'dry-fart-made-with-Voicemod.mp3');
+    assert.ok(dryClip.src.includes('dry-fart-made-with-Voicemod.mp3'));
+  });
+
+  it('manages soundboard volume with persistence and clamping', () => {
+    const memoryStorage = new Map<string, string>();
+    const originalWindow = globalThis.window;
+
+    (globalThis as unknown as { window: unknown }).window = {
+      localStorage: {
+        getItem: (key: string) => memoryStorage.get(key) ?? null,
+        setItem: (key: string, val: string) => { memoryStorage.set(key, val); },
+      },
+      dispatchEvent: () => true,
+    };
+
+    try {
+      const defaultVol = getSoundboardVolume();
+      assert.equal(defaultVol, DEFAULT_SOUNDBOARD_VOLUME);
+
+      saveSoundboardVolume(0.5);
+      assert.equal(getSoundboardVolume(), 0.5);
+
+      // Clamping > 1
+      saveSoundboardVolume(1.8);
+      assert.equal(getSoundboardVolume(), 1);
+
+      // Clamping < 0
+      saveSoundboardVolume(-0.2);
+      assert.equal(getSoundboardVolume(), 0);
+    } finally {
+      (globalThis as unknown as { window: unknown }).window = originalWindow;
+    }
+  });
+
+  it('handles soundboard manager subscriber events and stops safely', () => {
+    let notified: string[] = [];
+    const unsubscribe = soundboardManager.subscribe((activeIds) => {
+      notified = activeIds;
+    });
+
+    assert.ok(Array.isArray(notified));
+    soundboardManager.stop('non-existent');
+    soundboardManager.stopAll();
+    unsubscribe();
+  });
+
+  it('integrates TopSoundsDropdown into StreamVideo controls bar and sidebar', () => {
+    assert.ok(roomPageContent.includes("import { TopSoundsDropdown } from '../components/top-sounds-dropdown'"));
+    // Na barra de controles do vídeo para usar enquanto assiste a transmissão
+    assert.ok(roomPageContent.includes('<TopSoundsDropdown placement="top"'));
+    // Na sidebar de áudio abre para CIMA e para a DIREITA
+    assert.ok(roomPageContent.includes('<TopSoundsDropdown placement="top-right" />'));
+  });
+
+  it('renders Discord-style Top Sounds dropdown with header, chevron, and sound buttons grid', () => {
+    assert.ok(topSoundsDropdownContent.includes('export function TopSoundsDropdown'));
+    // Header "Top Sounds"
+    assert.ok(topSoundsDropdownContent.includes('Top Sounds'));
+    assert.ok(topSoundsDropdownContent.includes('ChevronDown'));
+    // Grid de sons com emoji e nome
+    assert.ok(topSoundsDropdownContent.includes('clip.emoji'));
+    assert.ok(topSoundsDropdownContent.includes('clip.name'));
+    assert.ok(topSoundsDropdownContent.includes('grid grid-cols-2'));
+    // Z-index z-[100] para ficar acima de outros dropdowns
+    assert.ok(topSoundsDropdownContent.includes('z-[100]'));
+    // Permanece aberto ao clicar nos sons
+    assert.ok(topSoundsDropdownContent.includes('e?.stopPropagation()'));
+  });
+});

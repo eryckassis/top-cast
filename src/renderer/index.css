@@ -379,7 +379,7 @@
     @apply bg-background text-foreground antialiased;
     font-family: Inter, 'Segoe UI', sans-serif;
     font-size: 17px;
-    background-image: radial-gradient(circle at top, hsl(var(--primary) / 0.18), transparent 25%);
+    background-image: radial-gradient(circle at top, hsl(var(--primary) / 0.08), transparent 35%);
     min-height: 100vh;
   }
 
@@ -561,5 +561,12 @@
   .topcast-tooltip-content {
     animation: none !important;
   }
+}
+
+:fullscreen,
+:-webkit-full-screen {
+  width: 100vw !important;
+  height: 100vh !important;
+  background-color: #000000 !important;
 }
 

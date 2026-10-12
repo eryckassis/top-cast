@@ -67,38 +67,34 @@ export default function CreateRoomPage({
 
   return (
     <main className="relative flex h-full min-h-full items-center justify-center overflow-x-hidden bg-background px-4 py-6 text-slate-50 sm:px-6 sm:py-8">
-      {/* Luz ambiente e textura de fundo alinhadas com a identidade do TopCast */}
+      {/* Luz ambiente e textura de fundo discreta */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,hsl(var(--primary)/0.16),transparent_60%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,hsl(var(--primary)/0.12),transparent_60%)]"
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(hsl(var(--primary))_1px,transparent_1px)] [background-size:24px_24px] opacity-[0.035]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(hsl(var(--primary))_1px,transparent_1px)] [background-size:24px_24px] opacity-[0.025]"
       />
 
       {/* Card da Tela Intermediária com Design Moderno e Glassmorphism */}
-      <section className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-slate-800/80 bg-slate-950/90 p-6 shadow-2xl shadow-black/80 backdrop-blur-2xl sm:p-8">
-        {/* Spotlight no topo do card */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-28 left-1/2 h-56 w-full -translate-x-1/2 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-500/20 via-blue-500/5 to-transparent blur-2xl"
-        />
-
+      <section className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-border/40 bg-slate-900/85 p-6 shadow-2xl backdrop-blur-2xl sm:p-8">
         {/* Barra superior com botão Voltar e indicador de Sessão */}
         <div className="relative z-10 mb-6 flex items-center justify-between">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             disabled={isCreating}
             onClick={onBack}
-            className="group inline-flex items-center gap-2 rounded-xl border border-slate-800/80 bg-slate-900/60 px-3 py-1.5 text-xs font-medium text-slate-300 backdrop-blur-sm transition-all duration-200 hover:border-slate-700 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 disabled:opacity-50"
+            className="h-8 gap-2 rounded-xl border border-border/40 bg-slate-900/60 px-3 text-xs font-medium text-slate-300 backdrop-blur-sm transition-all hover:bg-slate-800 hover:text-white"
           >
-            <ArrowLeft className="h-3.5 w-3.5 transition-transform duration-200 group-hover:-translate-x-0.5" />
+            <ArrowLeft className="h-3.5 w-3.5" />
             <span>Voltar</span>
-          </button>
+          </Button>
 
           <div className="flex items-center gap-2 text-xs font-medium text-slate-400">
-            <Radio className="h-3.5 w-3.5 text-blue-400 animate-pulse" />
+            <Radio className="h-3.5 w-3.5 text-primary animate-pulse" />
             <span>Nova Sessão</span>
           </div>
         </div>
@@ -106,7 +102,7 @@ export default function CreateRoomPage({
         {/* Cabeçalho Principal */}
         <div className="relative z-10">
           <div className="flex items-center gap-3.5">
-            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20 shadow-lg shadow-blue-500/5">
+            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-sm">
               <Radio className="h-6 w-6" />
             </div>
             <div>
@@ -125,8 +121,8 @@ export default function CreateRoomPage({
         </div>
 
         {/* Card do Anfitrião com Avatar Voxel e Identidade */}
-        <div className="relative z-10 mt-5 flex items-center gap-3.5 rounded-2xl border border-slate-800/70 bg-slate-900/50 p-3.5 backdrop-blur-sm">
-          <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl ring-2 ring-blue-500/30">
+        <div className="relative z-10 mt-5 flex items-center gap-3.5 rounded-2xl border border-border/40 bg-slate-950/50 p-3.5 backdrop-blur-md">
+          <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-border/40 shadow-inner ring-1 ring-border/50">
             <VoxelAvatar displayName={displayName} seed={avatarSeed} />
           </div>
           <div className="min-w-0 flex-1">
@@ -137,39 +133,39 @@ export default function CreateRoomPage({
               {displayName}
             </span>
           </div>
-          <span className="inline-flex items-center rounded-full bg-blue-500/10 px-2.5 py-1 text-[11px] font-medium text-blue-400 ring-1 ring-blue-500/20">
+          <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary">
             Host
           </span>
         </div>
 
         {/* Grid de Especificações da Sala */}
         <div className="relative z-10 mt-4 grid grid-cols-2 gap-3">
-          <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3.5 backdrop-blur-sm transition-colors hover:border-slate-800 hover:bg-slate-900/60">
+          <div className="rounded-2xl border border-border/40 bg-slate-950/40 p-3.5 backdrop-blur-sm transition-colors hover:border-border/60 hover:bg-slate-950/60">
             <div className="flex items-center gap-2 text-slate-400">
-              <Users className="h-4 w-4 text-blue-400" />
+              <Users className="h-4 w-4 text-primary" />
               <span className="text-xs font-medium">Capacidade</span>
             </div>
             <p className="mt-2 text-sm font-semibold text-white">10 pessoas</p>
             <p className="mt-0.5 text-[11px] text-slate-400">Assistindo ao vivo</p>
           </div>
 
-          <div className="rounded-2xl border border-slate-800/60 bg-slate-900/40 p-3.5 backdrop-blur-sm transition-colors hover:border-slate-800 hover:bg-slate-900/60">
+          <div className="rounded-2xl border border-border/40 bg-slate-950/40 p-3.5 backdrop-blur-sm transition-colors hover:border-border/60 hover:bg-slate-950/60">
             <div className="flex items-center gap-2 text-slate-400">
-              <Clock className="h-4 w-4 text-blue-400" />
+              <Clock className="h-4 w-4 text-primary" />
               <span className="text-xs font-medium">Validade</span>
             </div>
             <p className="mt-2 text-sm font-semibold text-white">24 horas</p>
-            <p className="mt-0.5 text-slate-400 text-[11px]">Código temporário</p>
+            <p className="mt-0.5 text-[11px] text-slate-400">Código temporário</p>
           </div>
         </div>
 
         {/* Banner de Garantia P2P */}
-        <div className="relative z-10 mt-3 flex items-center gap-2.5 rounded-xl border border-slate-800/50 bg-slate-900/30 px-3.5 py-2.5 text-xs text-slate-400">
+        <div className="relative z-10 mt-3 flex items-center gap-2.5 rounded-xl border border-border/40 bg-slate-950/30 px-3.5 py-2.5 text-xs text-slate-400">
           <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" />
           <span>Conexão WebRTC ponto a ponto com baixa latência e transmissão segura.</span>
         </div>
 
-        {/* Mensagem de Erro com Animação e Destaque */}
+        {/* Mensagem de Erro */}
         {error && (
           <div
             role="alert"
@@ -180,13 +176,13 @@ export default function CreateRoomPage({
           </div>
         )}
 
-        {/* Botão de Ação Simples */}
+        {/* Botão de Ação Primário */}
         <div className="relative z-10 mt-6">
           <Button
             type="button"
             disabled={isCreating}
             onClick={() => void handleCreate()}
-            className="h-9 w-full rounded-xl bg-blue-600 px-5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+            className="h-10 w-full rounded-xl bg-primary px-5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50"
           >
             {isCreating ? 'Criando sala…' : 'Criar sala'}
           </Button>

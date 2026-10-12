@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  Activity,
   AlertTriangle,
   AppWindow,
   Check,
@@ -9,6 +10,7 @@ import {
   Crown,
   Dice5,
   HelpCircle,
+  Layers,
   Loader2,
   LogOut,
   Maximize,
@@ -16,16 +18,19 @@ import {
   Monitor,
   Radio,
   RefreshCw,
+  StopCircle,
   UserX,
   Volume1,
   Volume2,
   VolumeX,
-  X,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger } from '../components/ui/select';
+import { Slider } from '../components/ui/slider';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
 import { SettingsDialog } from '../components/settings-dialog';
+import { AudioEffectsDialog } from '../components/audio-effects-dialog';
+import { SoundboardDialog } from '../components/soundboard-dialog';
+import { TopSoundsDropdown } from '../components/top-sounds-dropdown';
 import { SourceThumbnail } from '../components/source-thumbnail';
 import {
   Dialog,
@@ -45,9 +50,10 @@ import {
   AlertDialogTrigger,
 } from '../components/ui/alert-dialog';
 import { formatRoomTimeRemaining, getParticipantAvatarHue, getParticipantInitials } from '../lib/room-ui';
-import { getVoxelAvatarDataUri, generateRandomAvatarSeed, saveLocalAvatarSeed } from '../lib/voxel-avatar';
+import { generateRandomAvatarSeed, saveLocalAvatarSeed } from '../lib/voxel-avatar';
 import { VoxelAvatar } from '../components/voxel-avatar';
 import { updateAvatar } from '../lib/room-client';
+import { useConnectionPing } from '../lib/use-connection-ping';
 import type { RoomSnapshot } from '../../shared/types/signaling';
 import type { CaptureSource } from '../../shared/types/desktop-api';
 import type { SignalingStatus } from '../../shared/types/signaling';
@@ -83,12 +89,17 @@ interface RoomPageProps {
   onOpenWelcome?: () => void;
 }
 
-function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: boolean }) {
+interface StreamVideoProps {
+  stream: MediaStream;
+  isHost?: boolean;
+}
+
+function StreamVideo({ stream, isHost = false }: StreamVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [volume, setVolume] = useState(1);
-  const [isMuted, setIsMuted] = useState(muted);
+  const [isMuted, setIsMuted] = useState(isHost);
   const [showControls, setShowControls] = useState(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevVolumeRef = useRef(1);
@@ -98,46 +109,173 @@ function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: b
     const videoElement = videoRef.current;
     if (videoElement) {
       videoElement.srcObject = stream;
-      videoElement.volume = volume;
-      videoElement.muted = isMuted;
+      if (isHost) {
+        videoElement.muted = true;
+      } else {
+        videoElement.volume = volume;
+        videoElement.muted = isMuted;
+      }
+      videoElement.play().catch(() => {
+        // Ignora rejeição de autoplay se necessário
+      });
     }
     return () => {
       if (videoElement) {
         videoElement.srcObject = null;
       }
     };
-  }, [stream]);
+  }, [stream, isHost]);
 
-  // Mantém volume e silenciamento sincronizados
+  // Mantém volume e silenciamento reativamente sincronizados
   useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.volume = volume;
-      videoRef.current.muted = isMuted;
+      if (isHost) {
+        videoRef.current.muted = true;
+      } else {
+        videoRef.current.volume = volume;
+        videoRef.current.muted = isMuted;
+      }
     }
-  }, [volume, isMuted]);
+  }, [volume, isMuted, isHost]);
 
-  // Escuta alterações de tela cheia
+  // Escuta alterações de tela cheia com suporte cross-browser/Electron
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
+      const doc = document as unknown as {
+        fullscreenElement?: Element | null;
+        webkitFullscreenElement?: Element | null;
+        mozFullScreenElement?: Element | null;
+        msFullscreenElement?: Element | null;
+      };
+      const active = Boolean(
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement,
+      );
+      setIsFullscreen(active);
+      window.dispatchEvent(new CustomEvent('topcast:fullscreen-change', { detail: { isFullscreen: active } }));
     };
+
     document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+      window.dispatchEvent(new CustomEvent('topcast:fullscreen-change', { detail: { isFullscreen: false } }));
     };
   }, []);
 
   const toggleFullscreen = async () => {
     try {
-      if (!document.fullscreenElement) {
-        if (containerRef.current) {
-          await containerRef.current.requestFullscreen();
+      const container = containerRef.current;
+      const doc = document as unknown as {
+        fullscreenElement?: Element | null;
+        webkitFullscreenElement?: Element | null;
+        mozFullScreenElement?: Element | null;
+        msFullscreenElement?: Element | null;
+        exitFullscreen?: () => Promise<void>;
+        webkitExitFullscreen?: () => Promise<void>;
+        mozCancelFullScreen?: () => Promise<void>;
+        msExitFullscreen?: () => Promise<void>;
+      };
+
+      const isCurrentlyFullscreen = Boolean(
+        isFullscreen ||
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement,
+      );
+
+      if (!isCurrentlyFullscreen) {
+        let apiSucceeded = false;
+        if (container) {
+          const el = container as unknown as {
+            requestFullscreen?: () => Promise<void>;
+            webkitRequestFullscreen?: () => Promise<void>;
+            mozRequestFullScreen?: () => Promise<void>;
+            msRequestFullscreen?: () => Promise<void>;
+          };
+
+          try {
+            if (el.requestFullscreen) {
+              await el.requestFullscreen();
+              apiSucceeded = true;
+            } else if (el.webkitRequestFullscreen) {
+              await el.webkitRequestFullscreen();
+              apiSucceeded = true;
+            } else if (doc.fullscreenElement !== undefined && document.documentElement.requestFullscreen) {
+              await document.documentElement.requestFullscreen();
+              apiSucceeded = true;
+            } else if (el.mozRequestFullScreen) {
+              await el.mozRequestFullScreen();
+              apiSucceeded = true;
+            } else if (el.msRequestFullscreen) {
+              await el.msRequestFullscreen();
+              apiSucceeded = true;
+            }
+          } catch (apiErr) {
+            console.warn('[StreamVideo] HTML5 requestFullscreen falhou, aplicando fallback:', apiErr);
+          }
         }
+
+        // Se a chamada da Fullscreen API não ocorreu ou falhou, usa fallback de viewport e sincroniza Electron
+        if (!apiSucceeded) {
+          if (window.topCast?.isFullScreen && window.topCast?.toggleFullScreen) {
+            try {
+              const isWindowFs = await window.topCast.isFullScreen();
+              if (!isWindowFs) {
+                await window.topCast.toggleFullScreen();
+              }
+            } catch {
+              // Ignora
+            }
+          }
+        }
+        setIsFullscreen(true);
+        window.dispatchEvent(new CustomEvent('topcast:fullscreen-change', { detail: { isFullscreen: true } }));
       } else {
-        await document.exitFullscreen();
+        try {
+          if (doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement) {
+            if (doc.exitFullscreen) {
+              await doc.exitFullscreen();
+            } else if (doc.webkitExitFullscreen) {
+              await doc.webkitExitFullscreen();
+            } else if (doc.mozCancelFullScreen) {
+              await doc.mozCancelFullScreen();
+            } else if (doc.msExitFullscreen) {
+              await doc.msExitFullscreen();
+            }
+          }
+        } catch (exitErr) {
+          console.warn('[StreamVideo] HTML5 exitFullscreen falhou:', exitErr);
+        }
+
+        if (window.topCast?.isFullScreen && window.topCast?.toggleFullScreen) {
+          try {
+            const isWindowFs = await window.topCast.isFullScreen();
+            if (isWindowFs) {
+              await window.topCast.toggleFullScreen();
+            }
+          } catch {
+            // Ignora
+          }
+        }
+
+        setIsFullscreen(false);
+        window.dispatchEvent(new CustomEvent('topcast:fullscreen-change', { detail: { isFullscreen: false } }));
       }
     } catch (err) {
       console.warn('[StreamVideo] Erro ao alternar tela cheia:', err);
+      const next = !isFullscreen;
+      setIsFullscreen(next);
+      window.dispatchEvent(new CustomEvent('topcast:fullscreen-change', { detail: { isFullscreen: next } }));
     }
   };
 
@@ -163,6 +301,7 @@ function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: b
   };
 
   const toggleMute = () => {
+    if (isHost) return;
     if (isMuted || volume === 0) {
       const restore = prevVolumeRef.current > 0 ? prevVolumeRef.current : 0.8;
       setVolume(restore);
@@ -175,6 +314,7 @@ function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: b
   };
 
   const handleVolumeChange = (newVolume: number) => {
+    if (isHost) return;
     setVolume(newVolume);
     if (newVolume > 0 && isMuted) {
       setIsMuted(false);
@@ -184,7 +324,7 @@ function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: b
     resetHideTimer();
   };
 
-  // Atalhos de teclado: F para tela cheia, M para mutar
+  // Atalhos de teclado: F para tela cheia (todos os usuários), Esc para sair, M para mutar (estritamente para quem assiste)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeTag = document.activeElement?.tagName.toLowerCase();
@@ -193,7 +333,10 @@ function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: b
       if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         void toggleFullscreen();
-      } else if (e.key === 'm' || e.key === 'M') {
+      } else if (e.key === 'Escape' && isFullscreen) {
+        e.preventDefault();
+        void toggleFullscreen();
+      } else if ((e.key === 'm' || e.key === 'M') && !isHost) {
         e.preventDefault();
         toggleMute();
       }
@@ -202,7 +345,7 @@ function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: b
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isMuted, volume]);
+  }, [isFullscreen, isMuted, volume, isHost]);
 
   useEffect(() => {
     return () => {
@@ -217,20 +360,24 @@ function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: b
       ref={containerRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-black select-none"
+      className={`group flex items-center justify-center overflow-hidden bg-black select-none transition-all duration-150 ${
+        isFullscreen
+          ? 'fixed inset-0 z-[100] h-screen w-screen'
+          : 'relative h-full w-full'
+      } ${isFullscreen && !showControls ? 'cursor-none' : 'cursor-default'}`}
     >
       <video
         ref={videoRef}
         autoPlay
         playsInline
-        muted={isMuted}
+        muted={isHost ? true : isMuted}
         onDoubleClick={() => void toggleFullscreen()}
         className="h-full w-full bg-black object-contain cursor-pointer"
       />
 
-      {/* Barra de controles flutuante sobre o vídeo */}
+      {/* Barra de controles flutuante sobre o vídeo com efeito glass */}
       <div
-        className={`absolute inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-3 py-3 sm:px-5 sm:py-4 transition-opacity duration-300 ${
+        className={`absolute inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 bg-gradient-to-t from-black/90 via-black/40 to-transparent px-3 py-3 sm:px-5 sm:py-4 transition-opacity duration-200 ${
           showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
         onClick={(e) => e.stopPropagation()}
@@ -239,9 +386,9 @@ function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: b
           setShowControls(true);
         }}
       >
-        {/* Esquerda: Badge Ao Vivo e Controle de Volume */}
+        {/* Esquerda: Badge Ao Vivo e Controle de Volume (estritamente para convidados/viewers) */}
         <div className="flex items-center gap-2.5 sm:gap-3">
-          <div className="flex items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-red-300 shadow-sm select-none">
+          <div className="flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/15 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-red-300 shadow-sm backdrop-blur-md select-none">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
@@ -249,61 +396,75 @@ function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: b
             <span>AO VIVO</span>
           </div>
 
-          <div className="flex items-center gap-2 rounded-full bg-slate-900/80 px-2.5 py-1 backdrop-blur-md shadow-sm">
-            <button
-              type="button"
-              onClick={toggleMute}
-              className="rounded p-0.5 text-slate-300 transition-colors hover:text-white focus:outline-none focus:ring-1 focus:ring-blue-400"
-              title={isMuted ? 'Ativar som (M)' : 'Silenciar (M)'}
-              aria-label={isMuted ? 'Ativar som' : 'Silenciar'}
-            >
-              {isMuted || volume === 0 ? (
-                <VolumeX className="h-4 w-4 text-red-400" />
-              ) : volume > 0.5 ? (
-                <Volume2 className="h-4 w-4 text-slate-200" />
-              ) : (
-                <Volume1 className="h-4 w-4 text-slate-200" />
-              )}
-            </button>
+          {/* Slider de volume renderizado estritamente para o convidado */}
+          {!isHost && (
+            <div className="flex items-center gap-2.5 rounded-xl border border-border/40 bg-slate-900/80 px-3 py-1.5 backdrop-blur-md shadow-sm">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={toggleMute}
+                className="h-7 w-7 rounded-lg border border-border/40 bg-slate-900/60 text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
+                title={isMuted ? 'Ativar som (M)' : 'Silenciar (M)'}
+                aria-label={isMuted ? 'Ativar som' : 'Silenciar'}
+              >
+                {isMuted || volume === 0 ? (
+                  <VolumeX className="h-3.5 w-3.5 text-red-400" />
+                ) : volume > 0.5 ? (
+                  <Volume2 className="h-3.5 w-3.5 text-slate-200" />
+                ) : (
+                  <Volume1 className="h-3.5 w-3.5 text-slate-200" />
+                )}
+              </Button>
 
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.02"
-              value={isMuted ? 0 : volume}
-              onChange={(e) => handleVolumeChange(Number.parseFloat(e.target.value))}
-              className="h-1.5 w-16 cursor-pointer appearance-none rounded-lg bg-slate-700 accent-blue-500 transition-all hover:bg-slate-600 sm:w-20"
-              aria-label="Controle de volume da transmissão"
-            />
+              <Slider
+                value={[isMuted ? 0 : volume * 100]}
+                min={0}
+                max={100}
+                step={1}
+                onValueChange={([val]) => handleVolumeChange(val / 100)}
+                className="w-16 cursor-pointer sm:w-24"
+                aria-label="Controle de volume da transmissão"
+              />
 
-            <span className="w-8 text-right font-mono text-[11px] font-medium text-slate-300 select-none tabular-nums">
-              {Math.round((isMuted ? 0 : volume) * 100)}%
-            </span>
-          </div>
+              <span className="w-8 text-right font-mono text-[11px] font-medium text-slate-300 select-none tabular-nums">
+                {Math.round((isMuted ? 0 : volume) * 100)}%
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Direita: Botão de Tela Cheia */}
+        {/* Direita: Top Sounds (Soundboard) e Botão de Modo Tela Cheia */}
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void toggleFullscreen()}
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900/80 text-slate-200 backdrop-blur-md transition-all hover:bg-slate-800 hover:text-white active:scale-95 shadow-sm"
-            title={isFullscreen ? 'Sair da tela cheia (F ou Esc)' : 'Tela cheia (F)'}
-            aria-label={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
-          >
-            {isFullscreen ? (
-              <Minimize className="h-4 w-4" />
-            ) : (
-              <Maximize className="h-4 w-4" />
-            )}
-          </button>
+          {/* Top Sounds Dropdown para usar enquanto assiste a transmissão */}
+          <TopSoundsDropdown placement="top" triggerSize="default" />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => void toggleFullscreen()}
+                className="h-9 w-9 rounded-xl border border-border/40 bg-slate-900/60 text-slate-300 backdrop-blur-md shadow-sm transition-all hover:bg-slate-800 hover:text-slate-100 active:scale-95 focus-visible:ring-primary"
+                aria-label={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+              >
+                {isFullscreen ? (
+                  <Minimize className="h-4 w-4" />
+                ) : (
+                  <Maximize className="h-4 w-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {isFullscreen ? 'Sair da tela cheia (F ou Esc)' : 'Tela cheia (F)'}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
     </div>
   );
 }
-
 
 const DEFAULT_SIDEBAR_WIDTH = 330;
 const MIN_SIDEBAR_WIDTH = 260;
@@ -342,7 +503,6 @@ export default function RoomPage({
   captureError,
   onLoadSources,
   onPrepareSource,
-  onSetIncludeSystemAudio,
   onStartCapture,
   onStopCapture,
   onToggleSystemAudio,
@@ -361,12 +521,13 @@ export default function RoomPage({
   const [isSourcePickerOpen, setIsSourcePickerOpen] = useState(false);
   const [presenceSelectOpen, setPresenceSelectOpen] = useState(false);
   const presenceCloseTimeoutRef = useRef<number | null>(null);
-  const [isRandomizingAvatar, setIsRandomizingAvatar] = useState(false);
   const [localAvatarSeedOverride, setLocalAvatarSeedOverride] = useState<string | null>(null);
   const [isStartingLocally, setIsStartingLocally] = useState(false);
   const [sourceKind, setSourceKind] = useState<CaptureSource['kind']>('screen');
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(getSavedSidebarWidth);
+  const [isStreamFullscreen, setIsStreamFullscreen] = useState(false);
+  const connectionPing = useConnectionPing(socket, signalingStatus);
   const [isResizing, setIsResizing] = useState(false);
   const isResizingRef = useRef(false);
   const startXRef = useRef(0);
@@ -462,6 +623,7 @@ export default function RoomPage({
       document.body.style.userSelect = '';
     };
   }, []);
+
   const isHost = room.participants.some((participant) => participant.id === selfParticipantId && participant.role === 'host');
   const host = room.participants.find((participant) => participant.role === 'host');
   const remoteHostStream = host ? remoteStreams[host.id] ?? null : null;
@@ -479,7 +641,6 @@ export default function RoomPage({
   const isRoomConnected = signalingStatus === 'connected' && (
     room.participants.length <= 1 || rtcConnectedCount > 0
   );
-  
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 15_000);
@@ -493,6 +654,26 @@ export default function RoomPage({
       }
     };
   }, []);
+
+  // Sincroniza estado de tela cheia disparado pelo StreamVideo para eliminar contenção CSS
+  useEffect(() => {
+    const handleFullscreenEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<{ isFullscreen: boolean }>;
+      if (typeof customEvent.detail?.isFullscreen === 'boolean') {
+        setIsStreamFullscreen(customEvent.detail.isFullscreen);
+      }
+    };
+    window.addEventListener('topcast:fullscreen-change', handleFullscreenEvent);
+    return () => {
+      window.removeEventListener('topcast:fullscreen-change', handleFullscreenEvent);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!presentationStream || !isReceivingVideo) {
+      setIsStreamFullscreen(false);
+    }
+  }, [presentationStream, isReceivingVideo]);
 
   function handlePresenceMouseEnter() {
     if (presenceCloseTimeoutRef.current !== null) {
@@ -512,42 +693,42 @@ export default function RoomPage({
     }, 180);
   }
 
-async function handleCopyCode() {
-  let duration = 2_000;
-  try {
-    if (window.topCast?.copyToClipboard) {
-      await window.topCast.copyToClipboard(room.inviteCode);
-    } else if (navigator?.clipboard?.writeText) {
-      await navigator.clipboard.writeText(room.inviteCode);
-    } else {
-      const textArea = document.createElement('textarea');
-      textArea.value = room.inviteCode;
-      textArea.style.position = 'fixed';
-      textArea.style.opacity = '0';
-      document.body.appendChild(textArea);
-      textArea.focus();
-      textArea.select();
-      const success = document.execCommand('copy');
-      document.body.removeChild(textArea);
-      if (!success) throw new Error('Falha ao copiar');
+  async function handleCopyCode() {
+    let duration = 2_000;
+    try {
+      if (window.topCast?.copyToClipboard) {
+        await window.topCast.copyToClipboard(room.inviteCode);
+      } else if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(room.inviteCode);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = room.inviteCode;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        if (!success) throw new Error('Falha ao copiar');
+      }
+
+      setIsCopied(true);
+      setToastTone('success');
+      setToastMessage('Código copiado para a área de transferência!');
+    } catch {
+      duration = 4_500;
+      setIsCopied(false);
+      setToastTone('error');
+      setToastMessage('Não foi possível copiar o código.');
     }
 
-    setIsCopied(true);
-    setToastTone('success');
-    setToastMessage('Código copiado para a área de transferência!');
-  } catch (error) {
-    duration = 4_500;
-    setIsCopied(false);
-    setToastTone('error');
-    setToastMessage('Não foi possível copiar o código.');
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage('');
+      setIsCopied(false);
+    }, duration);
   }
-
-  if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
-  toastTimerRef.current = window.setTimeout(() => {
-    setToastMessage('');
-    setIsCopied(false);
-  }, duration);
-}
 
   function handlePresenceChange(value: string) {
     if (value !== 'available' && value !== 'away' && value !== 'busy') {
@@ -563,8 +744,6 @@ async function handleCopyCode() {
   }
 
   async function handleRandomizeAvatar() {
-    if (isRandomizingAvatar) return;
-    setIsRandomizingAvatar(true);
     const newSeed = generateRandomAvatarSeed();
     setLocalAvatarSeedOverride(newSeed);
     saveLocalAvatarSeed(newSeed);
@@ -573,8 +752,6 @@ async function handleCopyCode() {
       await updateAvatar(socket, newSeed);
     } catch (err) {
       console.error('Falha ao atualizar avatar:', err);
-    } finally {
-      window.setTimeout(() => setIsRandomizingAvatar(false), 450);
     }
   }
 
@@ -635,32 +812,35 @@ async function handleCopyCode() {
 
   return (
     <main className="relative flex h-full min-h-full flex-col overflow-x-hidden bg-background text-slate-50 lg:h-full lg:flex-row lg:overflow-hidden">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,hsl(var(--primary)/0.1),transparent_48%)]" />
+      {/* Overlay sutil ao fundo para garantir efeito premium */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,hsl(var(--primary)/0.08),transparent_55%)]" />
 
+      {/* Barra lateral com efeito glass refinado */}
       <aside
         style={{
           ['--sidebar-width' as string]: `${sidebarWidth}px`,
         }}
-        className={`relative z-10 flex w-full shrink-0 flex-col border-b border-slate-800 bg-slate-950/70 p-4 sm:p-5 lg:h-screen lg:min-h-0 lg:w-[var(--sidebar-width)] lg:border-b-0 lg:border-r lg:px-3.5 lg:py-4 ${
+        className={`relative z-10 flex w-full shrink-0 flex-col border-b border-border/40 bg-slate-950/70 backdrop-blur-xl p-4 sm:p-5 lg:h-screen lg:min-h-0 lg:w-[var(--sidebar-width)] lg:border-b-0 lg:border-r shadow-lg ${
           isResizing ? 'transition-none select-none' : 'transition-[width] duration-150 ease-out'
         }`}
       >
-        <div className="flex items-center gap-3 border-b border-slate-800/80 pb-4 [-webkit-app-region:drag]">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-500/10 text-blue-300">
-              <Radio className="h-6 w-6" />
+        <div className="flex items-center gap-3 border-b border-border/40 pb-4 [-webkit-app-region:drag]">
+          <div className="grid h-10 w-10 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-sm">
+            <Radio className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <h1 className="truncate text-sm font-semibold tracking-tight">TopCast</h1>
-            <p className="mt-0.5 text-xs text-slate-500">Sala de transmissão</p>
+            <h1 className="truncate text-sm font-semibold tracking-tight text-slate-100">TopCast</h1>
+            <p className="mt-0.5 text-xs text-slate-400">Sala de transmissão</p>
           </div>
         </div>
 
-        <section aria-label="Convite da sala" className="mt-3 rounded-lg bg-slate-800/40 p-3">
+        {/* Card do Convite */}
+        <section aria-label="Convite da sala" className="mt-3.5 rounded-xl border border-border/40 bg-slate-900/40 backdrop-blur-md p-3.5 shadow-sm">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Convite</h2>
             <span className="text-[11px] font-medium text-slate-400">Expira em {formatRoomTimeRemaining(room.expiresAt, now)}</span>
           </div>
-          <div className="mt-2 flex items-center gap-2 rounded-md bg-slate-950/60 p-1.5 pl-2.5">
+          <div className="mt-2.5 flex items-center gap-2 rounded-lg border border-border/30 bg-slate-950/60 p-1.5 pl-2.5 shadow-inner">
             <span className="min-w-0 flex-1 truncate font-mono text-sm font-bold tracking-widest text-blue-200">{room.inviteCode}</span>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -670,29 +850,28 @@ async function handleCopyCode() {
                   size="icon"
                   onClick={() => void handleCopyCode()}
                   aria-label={isCopied ? 'Código copiado' : 'Copiar código do convite'}
-                  className="h-8 w-8 shrink-0 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+                  className="h-8 w-8 shrink-0 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-slate-100"
                 >
                   {isCopied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>
+              <TooltipContent side="top">
                 {isCopied ? 'Copiado!' : 'Copiar código de convite'}
               </TooltipContent>
             </Tooltip>
           </div>
-          <p className="mt-1.5 text-[11px] text-slate-500">Validade: {new Date(room.expiresAt).toLocaleString()}</p>
+          <p className="mt-2 text-[11px] text-slate-500">Validade: {new Date(room.expiresAt).toLocaleString()}</p>
         </section>
 
-        <section aria-labelledby="participants-heading" className="mt-5 flex min-h-24 flex-1 flex-col lg:min-h-0">
-          <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+        {/* Lista de Participantes */}
+        <section aria-labelledby="participants-heading" className="mt-4 flex min-h-24 flex-1 flex-col lg:min-h-0">
+          <div className="flex items-center justify-between border-b border-border/40 pb-2">
             <h2 id="participants-heading" className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Participantes</h2>
-            <span className="text-[12px] tabular-nums text-slate-500">{room.participants.length}/{room.maxParticipants}</span>
+            <span className="text-[12px] tabular-nums text-slate-400">{room.participants.length}/{room.maxParticipants}</span>
           </div>
-          <ul className="mt-2 flex flex-col gap-1.5 overflow-y-auto">
+          <ul className="mt-2.5 flex flex-col gap-1.5 overflow-y-auto pr-0.5">
             {room.participants.map((participant) => {
               const isSelf = participant.id === selfParticipantId;
-              const avatarHue = getParticipantAvatarHue(participant.displayName);
-              const initials = getParticipantInitials(participant.displayName);
               const presenceColor = participant.presence === 'available'
                 ? 'bg-emerald-400'
                 : participant.presence === 'away' ? 'bg-amber-300' : 'bg-red-400';
@@ -710,9 +889,9 @@ async function handleCopyCode() {
                       setParticipantToKick({ id: participant.id, displayName: participant.displayName });
                     }
                   }}
-                  className={`group flex items-center justify-between gap-2.5 rounded-lg bg-slate-900/50 p-2.5 transition-all ${
+                  className={`group flex items-center justify-between gap-2.5 rounded-xl border border-border/30 bg-slate-900/40 backdrop-blur-sm p-2.5 transition-all duration-150 ${
                     canKickThisParticipant
-                      ? 'cursor-pointer hover:bg-slate-800/80'
+                      ? 'cursor-pointer hover:border-border/60 hover:bg-slate-800/70'
                       : ''
                   }`}
                   role={canKickThisParticipant ? 'button' : undefined}
@@ -730,10 +909,10 @@ async function handleCopyCode() {
                   title={canKickThisParticipant ? `Clique para remover ${participant.displayName} da sala` : undefined}
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                    {/* Avatar com status badge na extremidade inferior direita (estilo Discord) */}
+                    {/* Avatar com status badge */}
                     <div className="relative shrink-0">
                       <div
-                        className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md bg-slate-950/80 ring-1 ring-slate-800 shadow-sm"
+                        className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-slate-950/80 ring-1 ring-border/50 shadow-sm"
                         role="img"
                         aria-label={`${participant.displayName}, ${presenceLabel}`}
                       >
@@ -759,11 +938,11 @@ async function handleCopyCode() {
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     {participant.role === 'host' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300">
                         <Crown className="h-3 w-3" />Host
                       </span>
                     ) : (
-                      <span className="rounded-full bg-slate-700/40 px-2 py-0.5 text-[11px] font-medium text-slate-400">
+                      <span className="rounded-full border border-border/40 bg-slate-800/50 px-2 py-0.5 text-[11px] font-medium text-slate-400">
                         Convidado
                       </span>
                     )}
@@ -773,26 +952,27 @@ async function handleCopyCode() {
             })}
           </ul>
           {participantActionError && (
-            <p role="alert" className="mt-2 inline-flex w-fit max-w-full self-start items-start gap-2 break-words rounded-md bg-red-400/[0.06] px-2.5 py-2 text-xs leading-5 text-red-200">
+            <p role="alert" className="mt-2.5 inline-flex w-fit max-w-full self-start items-start gap-2 break-words rounded-xl border border-red-500/20 bg-red-400/10 px-3 py-2 text-xs leading-5 text-red-200">
               <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {participantActionError}
             </p>
           )}
         </section>
 
-        <div className="mt-4 border-t border-slate-800/80 pt-3 lg:mt-3">
+        {/* Status da Conexão & Áudio */}
+        <div className="relative z-30 mt-4 border-t border-border/40 pt-3 lg:mt-3">
           <section
             aria-label="Status da conexão e transmissão"
-            className="rounded-2xl bg-slate-900/80 p-4 backdrop-blur-md"
+            className="relative z-30 rounded-xl border border-border/40 bg-slate-900/50 backdrop-blur-md p-3.5 shadow-sm"
           >
             {/* Header: Sinalização com o Status da Conexão */}
             <div className="flex items-center justify-between gap-3 py-1">
               <div className="flex min-w-0 items-center gap-3">
                 <span
-                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl transition-colors ${
+                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl border transition-colors ${
                     isRoomConnected
-                      ? 'bg-emerald-500/15 text-emerald-400'
-                      : 'bg-amber-500/15 text-amber-300 animate-pulse'
+                      ? 'border-emerald-500/20 bg-emerald-500/15 text-emerald-400'
+                      : 'border-amber-500/20 bg-amber-500/15 text-amber-300 animate-pulse'
                   }`}
                 >
                   <Radio className="h-4 w-4" />
@@ -813,12 +993,12 @@ async function handleCopyCode() {
 
               {/* Status da Conexão (Online / RTC OK / Offline) */}
               <span
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide shadow-sm select-none transition-colors ${
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide shadow-sm select-none transition-colors ${
                   isRoomConnected
                     ? rtcConnectedCount > 0
-                      ? 'bg-emerald-500/15 text-emerald-300'
-                      : 'bg-blue-500/15 text-blue-300'
-                    : 'bg-amber-500/15 text-amber-300'
+                      ? 'border-emerald-500/20 bg-emerald-500/15 text-emerald-300'
+                      : 'border-blue-500/20 bg-blue-500/15 text-blue-300'
+                    : 'border-amber-500/20 bg-amber-500/15 text-amber-300'
                 }`}
               >
                 <span className="relative flex h-1.5 w-1.5">
@@ -845,17 +1025,51 @@ async function handleCopyCode() {
               </span>
             </div>
 
-            {/* Linha Divisória com espaçamento vertical respirável */}
-            <div className="my-3.5 border-t border-slate-800/80" />
+            {/* Linha de Status de Conexão: Ping / Latência */}
+            <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg border border-border/30 bg-slate-950/50 px-2.5 py-1.5 shadow-inner">
+              <div className="flex items-center gap-2 text-slate-400">
+                <Activity className={`h-3.5 w-3.5 ${connectionPing.iconColor}`} />
+                <span className="text-[11px] font-medium text-slate-300">Latência da rede</span>
+              </div>
 
-            {/* Linha 2: Áudio da Tela */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    tabIndex={0}
+                    role="status"
+                    aria-label={`Qualidade da conexão: ${connectionPing.text}`}
+                    className="inline-flex items-center gap-1.5 cursor-help select-none rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                  >
+                    <span className="relative flex h-2 w-2">
+                      {isRoomConnected && connectionPing.ping !== null && connectionPing.ping < 150 && (
+                        <span
+                          className={`absolute inline-flex h-full w-full animate-ping rounded-full ${connectionPing.dotColor} opacity-75`}
+                        />
+                      )}
+                      <span className={`relative inline-flex h-2 w-2 rounded-full ${connectionPing.dotColor}`} />
+                    </span>
+                    <span className={`font-mono text-xs font-semibold ${connectionPing.textColor}`}>
+                      {connectionPing.text}
+                    </span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {connectionPing.tooltipText}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+
+            {/* Linha Divisória */}
+            <div className="my-3 border-t border-border/40" />
+
+            {/* Linha 2: Áudio da Tela & Botão de Efeitos de Áudio */}
             <div className="flex items-center justify-between gap-3 py-1">
               <div className="flex min-w-0 items-center gap-3">
                 <span
-                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl transition-colors ${
+                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl border transition-colors ${
                     hasSystemAudio && systemAudioEnabled
-                      ? 'bg-blue-500/15 text-blue-400'
-                      : 'bg-slate-950/70 text-slate-500'
+                      ? 'border-blue-500/20 bg-blue-500/15 text-blue-400'
+                      : 'border-border/30 bg-slate-950/70 text-slate-500'
                   }`}
                 >
                   {hasSystemAudio && systemAudioEnabled ? (
@@ -878,39 +1092,47 @@ async function handleCopyCode() {
                 </div>
               </div>
 
-              {isHost && hasSystemAudio && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      aria-label={systemAudioEnabled ? 'Desativar áudio da transmissão' : 'Ativar áudio da transmissão'}
-                      onClick={() => onToggleSystemAudio(!systemAudioEnabled)}
-                      className={`h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg border-0 transition-all ${
-                        systemAudioEnabled
-                          ? 'bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white'
-                          : 'bg-blue-500/15 text-blue-300 hover:bg-blue-500/25'
-                      }`}
-                    >
-                      {systemAudioEnabled ? (
-                        <>
-                          <VolumeX className="h-3 w-3" />
-                          <span>Mutar</span>
-                        </>
-                      ) : (
-                        <>
-                          <Volume2 className="h-3 w-3" />
-                          <span>Ativar</span>
-                        </>
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {systemAudioEnabled ? 'Mutar o som transmitido' : 'Transmitir o som da tela'}
-                  </TooltipContent>
-                </Tooltip>
-              )}
+              <div className="flex items-center gap-1.5">
+                {/* Botão de Efeitos de Áudio */}
+                <AudioEffectsDialog />
+
+                {/* Botão de Top Sounds (Soundboard) que abre para CIMA e para a DIREITA */}
+                <TopSoundsDropdown placement="top-right" />
+
+                {isHost && hasSystemAudio && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        aria-label={systemAudioEnabled ? 'Desativar áudio da transmissão' : 'Ativar áudio da transmissão'}
+                        onClick={() => onToggleSystemAudio(!systemAudioEnabled)}
+                        className={`h-8 px-2.5 text-xs font-medium gap-1.5 rounded-xl border border-border/40 transition-all ${
+                          systemAudioEnabled
+                            ? 'bg-slate-900/60 text-slate-300 hover:bg-slate-800 hover:text-slate-100'
+                            : 'bg-primary/10 text-primary border-primary/20 hover:bg-primary/20'
+                        }`}
+                      >
+                        {systemAudioEnabled ? (
+                          <>
+                            <VolumeX className="h-3.5 w-3.5 text-slate-400" />
+                            <span>Mutar</span>
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 className="h-3.5 w-3.5 text-primary" />
+                            <span>Ativar</span>
+                          </>
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      {systemAudioEnabled ? 'Mutar o som transmitido' : 'Transmitir o som da tela'}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
             </div>
 
             {!supportsSystemAudio && (
@@ -920,13 +1142,11 @@ async function handleCopyCode() {
             )}
           </section>
 
-          {/* Footer: Card do Perfil do Usuário com seleção de status no hover consistente */}
+          {/* Footer: Card do Perfil do Usuário */}
           <div className="mt-3">
             {room.participants
               .filter((participant) => participant.id === selfParticipantId)
               .map((participant) => {
-                const avatarHue = getParticipantAvatarHue(participant.displayName);
-                const initials = getParticipantInitials(participant.displayName);
                 const presenceColor =
                   participant.presence === 'available'
                     ? 'bg-emerald-400'
@@ -954,42 +1174,42 @@ async function handleCopyCode() {
                       aria-haspopup="listbox"
                       aria-expanded={presenceSelectOpen}
                       aria-label={`Alterar status de ${participant.displayName}. Status atual: ${presenceLabel}`}
-                      className="group flex w-full items-center justify-start gap-2 rounded-2xl bg-slate-900/70 p-3 text-left transition-all hover:bg-slate-900/95 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      className="group flex w-full items-center gap-2.5 rounded-xl border border-border/40 bg-slate-900/50 p-2 shadow-sm backdrop-blur-md transition-all duration-150 hover:border-border/70 hover:bg-slate-900/80 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       <div className="relative shrink-0" aria-hidden="true">
-                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-slate-950/80 ring-2 ring-slate-800 shadow-sm">
+                        <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-slate-950/80 ring-1 ring-border/50 shadow-sm">
                           <VoxelAvatar
                             displayName={participant.displayName}
                             seed={localAvatarSeedOverride || participant.avatarSeed}
                           />
                         </div>
                         <span
-                          className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-slate-900 shadow-sm ${presenceColor}`}
+                          className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-slate-900 shadow-sm ${presenceColor}`}
                         />
                       </div>
 
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-slate-100">
+                      <div className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-semibold text-slate-100 group-hover:text-white">
                           {participant.displayName}
                         </span>
-                        <span className="mt-0.5 flex items-center text-xs text-slate-400">
+                        <span className="mt-0.5 flex items-center text-[11px] text-slate-400">
                           <span className="truncate">{presenceLabel}</span>
                         </span>
-                      </span>
+                      </div>
 
-                      {/* Caret Icon animado suavemente com rotação */}
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-all duration-200 group-hover:bg-slate-800/80 group-hover:text-slate-200">
+                      {/* Caret Icon */}
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors group-hover:text-slate-200">
                         <ChevronDown
-                          className={`h-4 w-4 transition-transform duration-300 ease-out ${
-                            presenceSelectOpen ? 'rotate-180 text-blue-400' : 'rotate-0'
+                          className={`h-4 w-4 transition-transform duration-150 ease-out ${
+                            presenceSelectOpen ? 'rotate-180 text-primary' : 'rotate-0'
                           }`}
                         />
                       </span>
                     </button>
 
-                    {/* Dropdown Menu com bridge invisível para eliminar qualquer flickering no hover */}
+                    {/* Dropdown Menu com Glass styling */}
                     <div
-                      className={`absolute bottom-full left-0 right-0 z-50 pb-2 transition-all duration-200 ease-out ${
+                      className={`absolute bottom-full left-0 right-0 z-50 pb-2 transition-all duration-150 ease-out ${
                         presenceSelectOpen
                           ? 'pointer-events-auto opacity-100 translate-y-0'
                           : 'pointer-events-none opacity-0 translate-y-1'
@@ -997,11 +1217,11 @@ async function handleCopyCode() {
                       role="listbox"
                       aria-label="Opções de status de presença e avatar"
                     >
-                      <div className="flex flex-col gap-1 overflow-hidden rounded-2xl border border-slate-800/90 bg-slate-900/95 p-2 shadow-2xl shadow-black/80 backdrop-blur-xl">
-                        {/* Miniatura da foto de perfil e opção randomizar (apenas icon) */}
-                        <div className="flex items-center justify-between gap-2.5 rounded-xl bg-slate-950/60 p-2 border border-slate-800/50">
+                      <div className="flex flex-col gap-1 overflow-hidden rounded-2xl border border-border/40 bg-slate-900/95 p-2 shadow-2xl backdrop-blur-xl">
+                        {/* Miniatura da foto de perfil e randomizador simples */}
+                        <div className="flex items-center justify-between gap-2.5 rounded-xl border border-border/40 bg-slate-950/60 p-2">
                           <div className="flex min-w-0 items-center gap-2.5">
-                            <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-slate-700/60 bg-slate-900 shadow-inner">
+                            <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-lg border border-border/50 bg-slate-900 shadow-inner">
                               <VoxelAvatar
                                 displayName={participant.displayName}
                                 seed={localAvatarSeedOverride || participant.avatarSeed}
@@ -1009,7 +1229,7 @@ async function handleCopyCode() {
                             </div>
                             <div className="min-w-0">
                               <span className="block truncate text-xs font-semibold text-slate-200">
-                                Avatar Top
+                                Avatar
                               </span>
                               <span className="block truncate text-[10px] text-slate-400">
                                 Foto de perfil
@@ -1025,23 +1245,18 @@ async function handleCopyCode() {
                                   e.stopPropagation();
                                   void handleRandomizeAvatar();
                                 }}
-                                disabled={isRandomizingAvatar}
-                                aria-label="Randomizar avatar"
-                                className="group/dice flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-slate-800 hover:text-white disabled:opacity-50"
+                                aria-label="Sortear outro avatar"
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/40 bg-slate-900 text-slate-400 shadow-sm transition-colors duration-150 hover:border-border/80 hover:bg-slate-800 hover:text-slate-100 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                               >
-                                <Dice5
-                                  className={`h-4 w-4 transition-transform duration-500 ease-out group-hover/dice:rotate-180 ${
-                                    isRandomizingAvatar ? 'rotate-[360deg] text-blue-400' : ''
-                                  }`}
-                                />
+                                <Dice5 className="h-4 w-4" />
                               </button>
                             </TooltipTrigger>
-                            <TooltipContent>Randomizar</TooltipContent>
+                            <TooltipContent side="top">Sortear avatar</TooltipContent>
                           </Tooltip>
                         </div>
 
                         {/* Divisória sutil */}
-                        <div className="my-1 border-t border-slate-800/80" />
+                        <div className="my-1 border-t border-border/40" />
                         {[
                           { value: 'available', label: 'Disponível', dotColor: 'bg-emerald-400' },
                           { value: 'away', label: 'Ausente', dotColor: 'bg-amber-400' },
@@ -1058,7 +1273,7 @@ async function handleCopyCode() {
                                 handlePresenceChange(option.value);
                                 setPresenceSelectOpen(false);
                               }}
-                              className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium transition-all ${
+                              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-medium transition-all ${
                                 isSelected
                                   ? 'bg-slate-800 text-white font-semibold shadow-sm'
                                   : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
@@ -1080,7 +1295,7 @@ async function handleCopyCode() {
           </div>
         </div>
 
-        {/* Resize Handle (apenas em telas grandes desktop lg+) */}
+        {/* Separador de redimensionamento da sidebar */}
         <Tooltip open={isResizing ? false : undefined}>
           <TooltipTrigger asChild>
             <div
@@ -1102,8 +1317,8 @@ async function handleCopyCode() {
               <div
                 className={`mx-auto h-full w-[2px] transition-colors duration-150 ${
                   isResizing
-                    ? 'bg-blue-500 shadow-[0_0_10px_hsl(var(--primary)/0.9)]'
-                    : 'bg-transparent group-hover:bg-blue-400/70 group-focus-visible:bg-blue-400'
+                    ? 'bg-primary'
+                    : 'bg-transparent group-hover:bg-primary/50 group-focus-visible:bg-primary'
                 }`}
               />
             </div>
@@ -1114,11 +1329,12 @@ async function handleCopyCode() {
         </Tooltip>
       </aside>
 
+      {/* Área Principal */}
       <div className="relative mx-auto flex min-h-full w-full max-w-[1600px] flex-1 flex-col px-4 py-4 sm:px-6 sm:py-5 lg:min-h-0 lg:px-6 lg:py-5">
-        <header className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-800/80 pb-4 [-webkit-app-region:drag]">
+        <header className="flex shrink-0 items-center justify-between gap-4 border-b border-border/40 pb-4 [-webkit-app-region:drag]">
           <div>
-            <h2 className="text-base font-semibold">Sala de transmissão</h2>
-            <p className="mt-1 text-xs text-slate-500">{isHost ? 'Compartilhe sua tela com a sala' : 'Acompanhe a transmissão'}</p>
+            <h2 className="text-base font-semibold tracking-tight text-slate-100">Sala de transmissão</h2>
+            <p className="mt-0.5 text-xs text-slate-400">{isHost ? 'Compartilhe sua tela com a sala' : 'Acompanhe a transmissão'}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2 [-webkit-app-region:no-drag]">
             {onOpenWelcome && (
@@ -1130,12 +1346,12 @@ async function handleCopyCode() {
                     size="icon"
                     aria-label="Abrir guia de boas-vindas"
                     onClick={onOpenWelcome}
-                    className="h-9 w-9 rounded-xl bg-slate-900/60 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+                    className="h-9 w-9 rounded-xl border border-border/40 bg-slate-900/60 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
                   >
                     <HelpCircle className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Guia de Boas-Vindas</TooltipContent>
+                <TooltipContent side="bottom">Guia de Boas-Vindas</TooltipContent>
               </Tooltip>
             )}
             <SettingsDialog />
@@ -1149,35 +1365,63 @@ async function handleCopyCode() {
                         variant="ghost"
                         size="sm"
                         disabled={isLeaving}
-                        className="h-8 gap-2 px-2.5 text-red-300 hover:bg-red-400/10 hover:text-red-200"
+                        className="h-9 gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3.5 text-xs font-medium text-red-300 shadow-sm transition-all hover:border-red-500/30 hover:bg-red-500/20 hover:text-red-200"
                       >
                         <LogOut className="h-4 w-4" />
                         {isLeaving ? 'Encerrando…' : 'Encerrar sala'}
                       </Button>
                     </AlertDialogTrigger>
                   </TooltipTrigger>
-                  <TooltipContent>
+                  <TooltipContent side="bottom">
                     Encerrar sala para todos os participantes
                   </TooltipContent>
                 </Tooltip>
-                <AlertDialogContent className="max-w-[440px] overflow-hidden p-0">
-                  <div className="flex gap-4 p-5 sm:p-6">
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-red-400/10 text-red-300">
-                      <AlertTriangle className="h-5 w-5" />
-                    </span>
-                    <div className="min-w-0 pt-0.5">
-                      <AlertDialogTitle className="text-base font-semibold tracking-tight text-slate-100">
-                        Encerrar esta sala?
-                      </AlertDialogTitle>
-                      <AlertDialogDescription className="mt-2 text-sm leading-6 text-slate-400">
-                        Todos os participantes serão desconectados e o convite deixará de funcionar. Esta ação não pode ser desfeita.
-                      </AlertDialogDescription>
+                <AlertDialogContent className="max-w-md overflow-hidden rounded-2xl border border-border/40 bg-slate-900/95 p-0 text-slate-100 shadow-2xl backdrop-blur-xl sm:max-w-md">
+                  {/* Luz ambiente superior suave */}
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -top-24 left-1/2 h-48 w-full -translate-x-1/2 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-red-500/15 via-red-500/5 to-transparent blur-2xl"
+                  />
+
+                  {/* Header com borda inferior igual aos outros dialogs */}
+                  <div className="relative z-10 border-b border-border/40 px-6 py-5">
+                    <div className="flex items-center gap-3.5">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-red-500/25 bg-red-500/10 text-red-400 shadow-sm">
+                        <AlertTriangle className="h-5 w-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <AlertDialogTitle className="text-base font-semibold tracking-tight text-slate-100 sm:text-lg">
+                          Encerrar esta sala?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription className="mt-0.5 text-xs text-slate-400">
+                          Confirmação de encerramento da transmissão
+                        </AlertDialogDescription>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex flex-col-reverse gap-2 border-t border-slate-800 bg-slate-950/30 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-                    <AlertDialogCancel className="w-full sm:w-auto">Manter sala</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleLeave} className="w-full sm:w-auto">
-                      <LogOut className="h-4 w-4" />Encerrar sala
+
+                  {/* Conteúdo com detalhes e aviso claro */}
+                  <div className="relative z-10 px-6 py-5">
+                    <p className="text-xs leading-relaxed text-slate-300 sm:text-sm">
+                      Todos os participantes conectados serão desconectados imediatamente e o código de convite deixará de funcionar.
+                    </p>
+                    <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs leading-5 text-red-200">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+                      <span>Esta ação é definitiva e encerrará a transmissão no servidor para todos os membros.</span>
+                    </div>
+                  </div>
+
+                  {/* Footer padronizado com os botões do sistema */}
+                  <div className="relative z-10 flex flex-col-reverse gap-2.5 border-t border-border/40 bg-slate-950/40 px-6 py-4 sm:flex-row sm:justify-end">
+                    <AlertDialogCancel className="w-full sm:w-auto h-9 rounded-xl border border-border/40 bg-slate-900/60 px-4 text-xs font-medium text-slate-300 shadow-sm transition-all hover:bg-slate-800 hover:text-slate-100 focus-visible:ring-primary">
+                      Manter sala
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleLeave}
+                      className="w-full sm:w-auto h-9 gap-2 rounded-xl border border-red-500/30 bg-red-600 px-4 text-xs font-medium text-white shadow-sm transition-all hover:bg-red-500 active:scale-[0.98] focus-visible:ring-red-400"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      <span>Encerrar sala</span>
                     </AlertDialogAction>
                   </div>
                 </AlertDialogContent>
@@ -1191,13 +1435,13 @@ async function handleCopyCode() {
                     size="sm"
                     disabled={isLeaving}
                     onClick={handleLeave}
-                    className="h-8 gap-2 px-2.5 text-slate-400 hover:bg-red-400/10 hover:text-red-200"
+                    className="h-9 gap-2 rounded-xl border border-border/40 bg-slate-900/60 px-3.5 text-xs font-medium text-slate-300 shadow-sm transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-200"
                   >
                     <LogOut className="h-4 w-4" />
                     {isLeaving ? 'Saindo…' : 'Sair da sala'}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>
+                <TooltipContent side="bottom">
                   Sair desta sala de transmissão
                 </TooltipContent>
               </Tooltip>
@@ -1205,106 +1449,179 @@ async function handleCopyCode() {
           </div>
         </header>
 
+        {/* Player / Área Central da Stream */}
         <div className="flex flex-1 flex-col gap-4 py-4 lg:min-h-0 lg:py-5">
           <div className="flex min-w-0 flex-1 flex-col gap-4 lg:min-h-0">
-            <section className="flex min-h-[340px] flex-1 flex-col items-center justify-center overflow-hidden rounded-3xl bg-slate-900/60 p-4 shadow-xl shadow-black/10 sm:min-h-[420px] sm:p-6 lg:min-h-0">
+            <section
+              className={`relative flex flex-col items-center justify-center transition-all duration-150 ${
+                isStreamFullscreen
+                  ? 'fixed inset-0 z-[100] h-screen w-screen bg-black p-0 rounded-none border-none overflow-hidden'
+                  : 'min-h-[340px] flex-1 overflow-hidden rounded-2xl border border-border/40 bg-slate-900/50 backdrop-blur-md p-4 shadow-md sm:min-h-[420px] sm:p-5 lg:min-h-0'
+              }`}
+            >
               {presentationStream && isReceivingVideo ? (
                 <>
-                  <div className="mb-4 flex w-full items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
-                      <span className="h-2 w-2 rounded-full bg-red-400" />
-                      {isHost ? 'Sua tela está sendo compartilhada' : `${host?.displayName ?? 'Host'} está compartilhando`}
-                    </div>
-                    {isHost && (
-                      <div className="flex items-center gap-2">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              onClick={openSourcePicker}
-                              className="h-8 gap-1.5 bg-slate-800/80 text-slate-200 hover:bg-slate-700 hover:text-white"
-                            >
-                              <RefreshCw className="h-3.5 w-3.5" />
-                              Mudar tela
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            Alterar a tela ou janela transmitida sem interromper a transmissão
-                          </TooltipContent>
-                        </Tooltip>
-
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={onStopCapture}
-                              className="h-8 text-red-300 hover:bg-red-400/10 hover:text-red-200"
-                            >
-                              Parar compartilhamento
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            Interromper transmissão da sua tela
-                          </TooltipContent>
-                        </Tooltip>
+                  {!isStreamFullscreen && (
+                    <div className="mb-3.5 flex w-full items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
+                        <span className="relative flex h-2 w-2">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                          <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                        </span>
+                        <span>{isHost ? 'Sua tela está sendo compartilhada' : `${host?.displayName ?? 'Host'} está compartilhando`}</span>
                       </div>
-                    )}
-                  </div>
-                  <div className="aspect-video w-full overflow-hidden rounded-2xl bg-black">
-                    <StreamVideo stream={presentationStream} muted={isHost} />
+                      {isHost && (
+                        <div className="flex items-center gap-2">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={openSourcePicker}
+                                className="h-9 gap-2 rounded-xl border border-border/40 bg-slate-900/60 px-3.5 text-xs font-medium text-slate-300 shadow-sm transition-all hover:bg-slate-800 hover:text-slate-100"
+                              >
+                                <RefreshCw className="h-3.5 w-3.5" />
+                                <span>Mudar tela</span>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              Alterar a tela ou janela transmitida sem interromper a transmissão
+                            </TooltipContent>
+                          </Tooltip>
+
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={onStopCapture}
+                                className="h-9 gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3.5 text-xs font-medium text-red-300 shadow-sm transition-all hover:border-red-500/30 hover:bg-red-500/20 hover:text-red-200"
+                              >
+                                <StopCircle className="h-3.5 w-3.5" />
+                                <span>Parar compartilhamento</span>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">
+                              Interromper transmissão da sua tela
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div
+                    className={
+                      isStreamFullscreen
+                        ? 'relative h-full w-full bg-black overflow-hidden'
+                        : 'aspect-video w-full overflow-hidden rounded-xl border border-border/30 bg-black shadow-inner'
+                    }
+                  >
+                    <StreamVideo stream={presentationStream} isHost={isHost} />
                   </div>
                 </>
               ) : (
-                <>
-                  <div className="grid h-16 w-16 place-items-center rounded-2xl bg-blue-500/10 text-blue-300">
-                    <Monitor className="h-7 w-7" />
+                <div className="relative flex w-full flex-col items-center justify-center py-6 text-center">
+                  {/* Iluminação ambiente e grade de fundo sutil */}
+                 
+
+                  {/* Badge de status da sala */}
+                  <div className="relative mb-5 inline-flex items-center gap-2 rounded-full border border-border/40 bg-slate-950/70 px-3.5 py-1 text-xs text-slate-300 shadow-sm backdrop-blur-md">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                    </span>
+                    <span className="font-medium">
+                      {isHost ? 'Sala Pronta para Transmissão' : 'Aguardando Início do Host'}
+                    </span>
                   </div>
-                  <p className="mt-6 text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Sala pronta</p>
-                  <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+
+                  {/* Ícone principal com acabamento refinado */}
+                  <div className="relative mb-4">
+                    <div className="grid h-20 w-20 place-items-center rounded-2xl border border-primary/30 bg-gradient-to-b from-primary/20 via-primary/10 to-transparent text-primary backdrop-blur-sm">
+                      <Monitor className="h-9 w-9 text-primary" />
+                    </div>
+                    <div className="absolute -bottom-1 -right-1 grid h-7 w-7 place-items-center rounded-lg border border-border/50 bg-slate-900 text-primary shadow-md">
+                      <Radio className="h-3.5 w-3.5" />
+                    </div>
+                  </div>
+
+                  {/* Títulos e descrição profissional */}
+                  <h2 className="relative text-2xl font-bold tracking-tight text-white sm:text-3xl">
                     {isHost ? 'Compartilhe sua tela' : 'Aguardando transmissão'}
                   </h2>
-                  <p className="mt-3 max-w-md text-center text-sm leading-6 text-slate-400">
+                  <p className="relative mt-2.5 max-w-lg text-center text-sm leading-relaxed text-slate-400">
                     {isHost
-                      ? 'Escolha um monitor inteiro ou uma janela específica para compartilhar com a sala.'
-                      : 'O vídeo da tela compartilhada aparecerá aqui quando o host iniciar.'}
+                      ? 'Transmita monitores inteiros ou janelas específicas com áudio em alta definição e latência ultrabaixa para todos na sala.'
+                      : 'O host ainda não iniciou a transmissão. O vídeo da tela aparecerá automaticamente aqui assim que ele começar.'}
                   </p>
-                  {isHost && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button type="button" size="lg" onClick={openSourcePicker} className="mt-7 bg-primary text-primary-foreground hover:bg-primary/90">
-                          <Monitor className="mr-2 h-4 w-4" />
-                          Compartilhar tela
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Selecionar tela ou janela para transmitir
-                      </TooltipContent>
-                    </Tooltip>
+
+                  {/* Chips informativos das funcionalidades */}
+                  <div className="relative mt-6 flex flex-wrap items-center justify-center gap-2 max-w-lg">
+                    <div className="inline-flex items-center gap-2 rounded-xl border border-border/40 bg-slate-950/50 px-3 py-1.5 text-xs text-slate-300 shadow-sm backdrop-blur-sm">
+                      <Layers className="h-3.5 w-3.5 text-blue-400" />
+                      <span>Monitores & Janelas</span>
+                    </div>
+                    <div className="inline-flex items-center gap-2 rounded-xl border border-border/40 bg-slate-950/50 px-3 py-1.5 text-xs text-slate-300 shadow-sm backdrop-blur-sm">
+                      <Volume2 className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>Áudio Integrado</span>
+                    </div>
+                    <div className="inline-flex items-center gap-2 rounded-xl border border-border/40 bg-slate-950/50 px-3 py-1.5 text-xs text-slate-300 shadow-sm backdrop-blur-sm">
+                      <Radio className="h-3.5 w-3.5 text-indigo-400" />
+                      <span>WebRTC P2P Direto</span>
+                    </div>
+                  </div>
+
+                  {/* Botão de ação (Host) ou indicador de espera (Viewer) */}
+                  {isHost ? (
+                    <div className="relative mt-7">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            size="lg"
+                            onClick={openSourcePicker}
+                            className="h-11 gap-2.5 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary/90 hover:shadow-primary/35 active:scale-[0.98] focus-visible:ring-primary"
+                          >
+                            <Monitor className="h-4 w-4" />
+                            <span>Compartilhar tela</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          Selecionar tela ou janela para transmitir
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  ) : (
+                    <div className="relative mt-7 inline-flex items-center gap-2 rounded-xl border border-border/40 bg-slate-950/50 px-4 py-2 text-xs text-slate-400 shadow-sm backdrop-blur-md">
+                      <span className="relative flex h-2 w-2">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-60" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+                      </span>
+                      <span>Conectado à sala &middot; Sincronizando transmissão</span>
+                    </div>
                   )}
-                </>
+                </div>
               )}
 
               {captureError && isHost && !isSourcePickerOpen && (
-                <p role="alert" className="mx-auto mt-4 inline-flex w-fit max-w-full items-start gap-2 break-words rounded-lg bg-red-400/[0.06] px-3 py-2.5 text-sm text-red-200">
-                  <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                <p role="alert" className="mx-auto mt-4 inline-flex w-fit max-w-full items-start gap-2 break-words rounded-xl border border-red-500/20 bg-red-400/10 px-3.5 py-2.5 text-sm text-red-200">
+                  <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
                   {captureError}
                 </p>
               )}
             </section>
           </div>
-
         </div>
       </div>
 
+      {/* Modal de Seleção de Tela / Janela com Glass Styling */}
       <Dialog open={isSourcePickerOpen} onOpenChange={(open) => !open && closeSourcePicker()}>
-        <DialogContent className="flex max-h-[88vh] w-full max-w-4xl flex-col gap-0 overflow-hidden bg-card p-0 text-slate-100 shadow-[0_32px_100px_rgba(0,0,0,0.65)] sm:max-w-4xl sm:rounded-2xl">
-          <DialogHeader className="border-b border-slate-800/80 px-6 py-5 text-left">
+        <DialogContent className="flex max-h-[88vh] w-full max-w-4xl flex-col gap-0 overflow-hidden rounded-2xl border border-border/40 bg-slate-900/95 p-0 text-slate-100 shadow-2xl backdrop-blur-xl sm:max-w-4xl">
+          <DialogHeader className="border-b border-border/40 px-6 py-5 text-left">
             <div className="flex items-center gap-3.5 pr-8">
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-sm">
                 <Monitor className="h-5 w-5" />
               </span>
               <div className="min-w-0">
@@ -1320,8 +1637,8 @@ async function handleCopyCode() {
             </div>
           </DialogHeader>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 bg-slate-950/40 px-6 py-3">
-            <div role="tablist" aria-label="Tipo de origem" className="inline-flex rounded-lg bg-slate-950/70 p-1">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/40 bg-slate-950/40 px-6 py-3">
+            <div role="tablist" aria-label="Tipo de origem" className="inline-flex rounded-xl border border-border/40 bg-slate-950/70 p-1">
               {(['screen', 'window'] as const).map((kind) => {
                 const isScreen = kind === 'screen';
                 const isActive = sourceKind === kind;
@@ -1337,13 +1654,13 @@ async function handleCopyCode() {
                       setSelectedSourceId(null);
                       void onPrepareSource(null, includeSystemAudio);
                     }}
-                    className={`inline-flex h-9 items-center gap-2 rounded-md px-3.5 text-sm font-medium transition-colors ${
+                    className={`inline-flex h-8 items-center gap-2 rounded-lg px-3.5 text-xs font-medium transition-colors ${
                       isActive
                         ? 'bg-primary text-primary-foreground shadow-sm'
                         : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
                     }`}
                   >
-                    <SourceIcon className="h-4 w-4" />
+                    <SourceIcon className="h-3.5 w-3.5" />
                     {isScreen ? 'Telas' : 'Janelas'}
                   </button>
                 );
@@ -1363,13 +1680,13 @@ async function handleCopyCode() {
                     size="sm"
                     disabled={isLoadingSources}
                     onClick={() => void onLoadSources()}
-                    className="h-9 gap-2 px-3 text-slate-300 hover:bg-slate-800 hover:text-white"
+                    className="h-8 gap-2 px-3 text-xs text-slate-300 hover:bg-slate-800 hover:text-white"
                   >
                     <RefreshCw className={`h-3.5 w-3.5 ${isLoadingSources ? 'animate-spin' : ''}`} />
                     Atualizar
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>
+                <TooltipContent side="top">
                   Atualizar lista de telas e janelas
                 </TooltipContent>
               </Tooltip>
@@ -1378,15 +1695,15 @@ async function handleCopyCode() {
 
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
             {captureError && (
-              <p role="alert" className="mb-4 flex w-fit max-w-full items-start gap-2.5 break-words rounded-lg bg-red-400/[0.06] px-3.5 py-3 text-sm leading-5 text-red-200">
-                <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              <p role="alert" className="mb-4 flex w-fit max-w-full items-start gap-2.5 break-words rounded-xl border border-red-500/20 bg-red-400/10 px-3.5 py-3 text-sm leading-5 text-red-200">
+                <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
                 {captureError}
               </p>
             )}
 
             {isLoadingSources && filteredSources.length === 0 && (
               <div role="status" className="flex min-h-64 flex-col items-center justify-center text-center">
-                <span className="grid h-12 w-12 place-items-center rounded-xl bg-slate-800/70 text-blue-300">
+                <span className="grid h-12 w-12 place-items-center rounded-xl border border-border/40 bg-slate-800/70 text-blue-300">
                   <RefreshCw className="h-5 w-5 animate-spin" />
                 </span>
                 <p className="mt-4 text-sm font-medium text-slate-200">Buscando {sourceKind === 'screen' ? 'telas' : 'janelas'}…</p>
@@ -1395,8 +1712,8 @@ async function handleCopyCode() {
             )}
 
             {!isLoadingSources && filteredSources.length === 0 && (
-              <div className="flex min-h-64 flex-col items-center justify-center rounded-xl bg-slate-950/30 px-6 text-center">
-                <span className="grid h-12 w-12 place-items-center rounded-xl bg-slate-800/70 text-slate-400">
+              <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-border/40 bg-slate-950/30 px-6 text-center">
+                <span className="grid h-12 w-12 place-items-center rounded-xl border border-border/40 bg-slate-800/70 text-slate-400">
                   {sourceKind === 'screen' ? <Monitor className="h-5 w-5" /> : <AppWindow className="h-5 w-5" />}
                 </span>
                 <p className="mt-4 text-sm font-medium text-slate-200">Nenhuma {sourceKind === 'screen' ? 'tela' : 'janela'} encontrada</p>
@@ -1417,10 +1734,10 @@ async function handleCopyCode() {
                       disabled={isPreparingSource}
                       onClick={() => void handleSelectSource(source.id)}
                       aria-pressed={isSelected}
-                      className={`group flex flex-col overflow-hidden rounded-xl text-left border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-wait disabled:opacity-60 ${
+                      className={`group flex flex-col overflow-hidden rounded-xl text-left border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-wait disabled:opacity-60 ${
                         isSelected
-                          ? 'border-primary bg-primary/10 shadow-sm shadow-primary/25 ring-1 ring-primary'
-                          : 'border-slate-800/80 bg-slate-950/60 hover:border-primary hover:bg-slate-900/60'
+                          ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary'
+                          : 'border-border/40 bg-slate-950/60 backdrop-blur-sm hover:border-primary/50 hover:bg-slate-900/60'
                       }`}
                     >
                       <div className="relative aspect-video w-full overflow-hidden bg-slate-950">
@@ -1446,7 +1763,7 @@ async function handleCopyCode() {
             )}
           </div>
 
-          <div className="flex flex-col-reverse gap-3 border-t border-slate-800/80 bg-slate-950/40 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col-reverse gap-3 border-t border-border/40 bg-slate-950/40 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="self-center text-xs text-slate-500">Qualidade inicial: até 720p · 30 FPS</p>
             <div className="flex justify-end gap-2.5">
               <Button type="button" variant="ghost" onClick={closeSourcePicker}>
@@ -1462,7 +1779,7 @@ async function handleCopyCode() {
                   isStartingLocally
                 }
                 onClick={() => void handleStartCapture()}
-                className="min-w-[140px] gap-2 bg-primary px-4 text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                className="min-w-[140px] gap-2 bg-primary px-4 text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50"
               >
                 {isStartingCapture || isStartingLocally ? (
                   <>
@@ -1481,23 +1798,47 @@ async function handleCopyCode() {
         </DialogContent>
       </Dialog>
 
+      {/* Confirmação de expulsão de participante com AlertDialog */}
       <AlertDialog open={Boolean(participantToKick)} onOpenChange={(open) => !open && setParticipantToKick(null)}>
-        <AlertDialogContent className="max-w-[420px] overflow-hidden p-0 bg-slate-900 text-slate-100 sm:rounded-2xl">
-          <div className="flex gap-4 p-5 sm:p-6">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-red-500/15 text-red-400">
-              <UserX className="h-5 w-5" />
-            </span>
-            <div className="min-w-0 pt-0.5">
-              <AlertDialogTitle className="text-base font-semibold tracking-tight text-slate-100">
-                Remover {participantToKick?.displayName}?
-              </AlertDialogTitle>
-              <AlertDialogDescription className="mt-2 text-sm leading-6 text-slate-400">
-                Este participante será desconectado da sala de transmissão imediatamente.
-              </AlertDialogDescription>
+        <AlertDialogContent className="max-w-md overflow-hidden rounded-2xl border border-border/40 bg-slate-900/95 p-0 text-slate-100 shadow-2xl backdrop-blur-xl sm:max-w-md">
+          {/* Luz ambiente superior suave */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -top-24 left-1/2 h-48 w-full -translate-x-1/2 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-red-500/15 via-red-500/5 to-transparent blur-2xl"
+          />
+
+          {/* Header com borda inferior */}
+          <div className="relative z-10 border-b border-border/40 px-6 py-5">
+            <div className="flex items-center gap-3.5">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-red-500/25 bg-red-500/10 text-red-400 shadow-sm">
+                <UserX className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <AlertDialogTitle className="text-base font-semibold tracking-tight text-slate-100 sm:text-lg">
+                  Remover participante?
+                </AlertDialogTitle>
+                <AlertDialogDescription className="mt-0.5 text-xs text-slate-400">
+                  Desconectar {participantToKick?.displayName} da sala
+                </AlertDialogDescription>
+              </div>
             </div>
           </div>
-          <div className="flex flex-col-reverse gap-2 border-t border-slate-800 bg-slate-950/40 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-            <AlertDialogCancel onClick={() => setParticipantToKick(null)}>Cancelar</AlertDialogCancel>
+
+          {/* Conteúdo */}
+          <div className="relative z-10 px-6 py-5">
+            <p className="text-xs leading-relaxed text-slate-300 sm:text-sm">
+              Tem certeza que deseja remover <strong className="font-semibold text-slate-100">{participantToKick?.displayName}</strong> da transmissão? O participante será desconectado imediatamente.
+            </p>
+          </div>
+
+          {/* Footer com botões padronizados */}
+          <div className="relative z-10 flex flex-col-reverse gap-2.5 border-t border-border/40 bg-slate-950/40 px-6 py-4 sm:flex-row sm:justify-end">
+            <AlertDialogCancel
+              onClick={() => setParticipantToKick(null)}
+              className="w-full sm:w-auto h-9 rounded-xl border border-border/40 bg-slate-900/60 px-4 text-xs font-medium text-slate-300 shadow-sm transition-all hover:bg-slate-800 hover:text-slate-100 focus-visible:ring-primary"
+            >
+              Cancelar
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (participantToKick) {
@@ -1505,14 +1846,16 @@ async function handleCopyCode() {
                   setParticipantToKick(null);
                 }
               }}
-              className="bg-red-600 text-white hover:bg-red-700"
+              className="w-full sm:w-auto h-9 gap-2 rounded-xl border border-red-500/30 bg-red-600 px-4 text-xs font-medium text-white shadow-sm transition-all hover:bg-red-500 active:scale-[0.98] focus-visible:ring-red-400"
             >
-              Remover da sala
+              <UserX className="h-4 w-4" />
+              <span>Remover da sala</span>
             </AlertDialogAction>
           </div>
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Loading Overlay ao sair da sala */}
       {isLeaving && (
         <LoadingOverlay
           title="Saindo da sala…"
@@ -1520,14 +1863,15 @@ async function handleCopyCode() {
         />
       )}
 
+      {/* Notificação Toast com efeito Glass */}
       {toastMessage && (
         <div
           role={toastTone === 'error' ? 'alert' : 'status'}
           aria-live={toastTone === 'error' ? 'assertive' : 'polite'}
-          className={`fixed right-4 top-4 z-[90] flex w-fit max-w-[min(24rem,calc(100vw-2rem))] items-start gap-2.5 break-words rounded-xl px-4 py-3 text-sm shadow-2xl sm:right-6 sm:top-6 ${
+          className={`fixed right-4 top-4 z-[90] flex w-fit max-w-[min(24rem,calc(100vw-2rem))] items-start gap-2.5 break-words rounded-xl border border-border/40 bg-slate-900/90 px-4 py-3 text-sm shadow-xl backdrop-blur-xl sm:right-6 sm:top-6 ${
             toastTone === 'error'
-              ? 'bg-slate-900 text-red-100 shadow-red-950/20'
-              : 'bg-slate-900 text-slate-100'
+              ? 'text-red-100 shadow-red-950/20'
+              : 'text-slate-100'
           }`}
         >
           {toastTone === 'error'

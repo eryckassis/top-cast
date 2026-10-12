@@ -35,6 +35,8 @@ const api: TopCastApi = {
       return () => ipcRenderer.removeListener('app:process-audio-chunk', listener);
     },
   },
+  toggleFullScreen: () => ipcRenderer.invoke('app:toggle-fullscreen'),
+  isFullScreen: () => ipcRenderer.invoke('app:is-fullscreen'),
 };
 
 contextBridge.exposeInMainWorld('topCast', api);
