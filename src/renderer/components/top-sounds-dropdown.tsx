@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   AudioWaveform,
-  ChevronDown,
-  Square,
   Volume2,
   VolumeX,
 } from 'lucide-react';
@@ -110,11 +108,6 @@ export function TopSoundsDropdown({
     // Permanece aberto ao clicar nos sons para permitir múltiplos disparos seguidos
   };
 
-  const handleStopAll = (e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    soundboardManager.stopAll();
-  };
-
   const handleVolumeSliderChange = (vals: number[]) => {
     const newVol = (vals[0] ?? 80) / 100;
     setVolume(newVol);
@@ -193,33 +186,23 @@ export function TopSoundsDropdown({
           role="menu"
           aria-label="Top Sounds Soundboard"
           onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerMove={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
           className={cn(
             'absolute z-[100] w-72 sm:w-80 overflow-hidden rounded-2xl border border-border/40 bg-slate-900/95 p-3 text-slate-100 shadow-2xl backdrop-blur-xl animate-in fade-in-0 zoom-in-95 duration-150 ease-out select-none',
             getPlacementClasses(),
           )}
         >
-          {/* Header simples estilo Discord: Icon + Top Sounds + ChevronDown */}
+          {/* Header simples estilo Discord: Icon + Top Sounds */}
           <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-border/30">
             <div className="flex items-center gap-1.5 text-slate-200">
               <AudioWaveform className="h-4 w-4 text-primary" />
               <span className="text-xs font-semibold tracking-tight text-slate-100">Top Sounds</span>
-              <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
             </div>
 
             <div className="flex items-center gap-1">
-              {anyPlaying && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleStopAll}
-                  aria-label="Parar todos os sons"
-                  className="h-6 gap-1 rounded-lg border border-destructive/30 bg-destructive/10 px-2 text-[10px] font-medium text-destructive hover:bg-destructive/20 active:scale-95"
-                >
-                  <Square className="h-2.5 w-2.5 fill-current" />
-                  <span>Parar</span>
-                </Button>
-              )}
 
               <Button
                 type="button"

@@ -108,18 +108,21 @@ describe('Soundboard & Top Sounds (Discord-style)', () => {
     assert.ok(roomPageContent.includes('<TopSoundsDropdown placement="top-right" />'));
   });
 
-  it('renders Discord-style Top Sounds dropdown with header, chevron, and sound buttons grid', () => {
+  it('renders Discord-style Top Sounds dropdown with clean header, sound buttons grid, and pointer isolation', () => {
     assert.ok(topSoundsDropdownContent.includes('export function TopSoundsDropdown'));
     // Header "Top Sounds"
     assert.ok(topSoundsDropdownContent.includes('Top Sounds'));
-    assert.ok(topSoundsDropdownContent.includes('ChevronDown'));
+    // Caret e botão Parar removidos conforme solicitado
+    assert.ok(!topSoundsDropdownContent.includes('ChevronDown'), 'caret should be removed');
+    assert.ok(!topSoundsDropdownContent.includes('>Parar<'), 'Parar button should be removed');
     // Grid de sons com emoji e nome
     assert.ok(topSoundsDropdownContent.includes('clip.emoji'));
     assert.ok(topSoundsDropdownContent.includes('clip.name'));
     assert.ok(topSoundsDropdownContent.includes('grid grid-cols-2'));
-    // Z-index z-[100] para ficar acima de outros dropdowns
+    // Z-index z-[100] para ficar acima de outros dropdowns e do resize handle
     assert.ok(topSoundsDropdownContent.includes('z-[100]'));
-    // Permanece aberto ao clicar nos sons
+    // Permanece aberto e isola pointer events para não acionar redimensionamento através do drop
+    assert.ok(topSoundsDropdownContent.includes('onPointerDown'));
     assert.ok(topSoundsDropdownContent.includes('e?.stopPropagation()'));
   });
 });

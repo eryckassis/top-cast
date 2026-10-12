@@ -960,10 +960,10 @@ export default function RoomPage({
         </section>
 
         {/* Status da Conexão & Áudio */}
-        <div className="relative z-30 mt-4 border-t border-border/40 pt-3 lg:mt-3">
+        <div className="relative z-40 mt-4 border-t border-border/40 pt-3 lg:mt-3">
           <section
             aria-label="Status da conexão e transmissão"
-            className="relative z-30 rounded-xl border border-border/40 bg-slate-900/50 backdrop-blur-md p-3.5 shadow-sm"
+            className="relative z-40 rounded-xl border border-border/40 bg-slate-900/50 backdrop-blur-md p-3.5 shadow-sm"
           >
             {/* Header: Sinalização com o Status da Conexão */}
             <div className="flex items-center justify-between gap-3 py-1">
@@ -1312,7 +1312,7 @@ export default function RoomPage({
               onPointerCancel={handleResizeEnd}
               onDoubleClick={handleResetSidebarWidth}
               onKeyDown={handleResizeKeyDown}
-              className="group absolute -right-1.5 top-0 bottom-0 z-30 hidden w-3 cursor-col-resize select-none touch-none lg:block focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+              className="group absolute -right-1.5 top-0 bottom-0 z-20 hidden w-3 cursor-col-resize select-none touch-none lg:block focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
             >
               <div
                 className={`mx-auto h-full w-[2px] transition-colors duration-150 ${
