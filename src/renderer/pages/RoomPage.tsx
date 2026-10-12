@@ -3,9 +3,11 @@ import {
   AlertTriangle,
   AppWindow,
   Check,
+  ChevronDown,
   CircleAlert,
   Copy,
   Crown,
+  Dice5,
   HelpCircle,
   Loader2,
   LogOut,
@@ -21,7 +23,6 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
-import { Checkbox } from '../components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
 import { SettingsDialog } from '../components/settings-dialog';
@@ -44,6 +45,9 @@ import {
   AlertDialogTrigger,
 } from '../components/ui/alert-dialog';
 import { formatRoomTimeRemaining, getParticipantAvatarHue, getParticipantInitials } from '../lib/room-ui';
+import { getVoxelAvatarDataUri, generateRandomAvatarSeed, saveLocalAvatarSeed } from '../lib/voxel-avatar';
+import { VoxelAvatar } from '../components/voxel-avatar';
+import { updateAvatar } from '../lib/room-client';
 import type { RoomSnapshot } from '../../shared/types/signaling';
 import type { CaptureSource } from '../../shared/types/desktop-api';
 import type { SignalingStatus } from '../../shared/types/signaling';
@@ -237,7 +241,7 @@ function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: b
       >
         {/* Esquerda: Badge Ao Vivo e Controle de Volume */}
         <div className="flex items-center gap-2.5 sm:gap-3">
-          <div className="flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/15 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-red-300 shadow-sm select-none">
+          <div className="flex items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-red-300 shadow-sm select-none">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
@@ -245,7 +249,7 @@ function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: b
             <span>AO VIVO</span>
           </div>
 
-          <div className="flex items-center gap-2 rounded-full border border-slate-700/60 bg-slate-900/80 px-2.5 py-1 backdrop-blur-md shadow-sm">
+          <div className="flex items-center gap-2 rounded-full bg-slate-900/80 px-2.5 py-1 backdrop-blur-md shadow-sm">
             <button
               type="button"
               onClick={toggleMute}
@@ -284,7 +288,7 @@ function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: b
           <button
             type="button"
             onClick={() => void toggleFullscreen()}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700/60 bg-slate-900/80 text-slate-200 backdrop-blur-md transition-all hover:border-slate-500 hover:bg-slate-800 hover:text-white active:scale-95 shadow-sm"
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900/80 text-slate-200 backdrop-blur-md transition-all hover:bg-slate-800 hover:text-white active:scale-95 shadow-sm"
             title={isFullscreen ? 'Sair da tela cheia (F ou Esc)' : 'Tela cheia (F)'}
             aria-label={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
           >
@@ -300,14 +304,6 @@ function StreamVideo({ stream, muted = false }: { stream: MediaStream; muted?: b
   );
 }
 
-function ScreenIcon({ className = 'h-5 w-5' }: { className?: string }) {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className={className}>
-      <rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7" />
-      <path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 const DEFAULT_SIDEBAR_WIDTH = 330;
 const MIN_SIDEBAR_WIDTH = 260;
@@ -363,6 +359,10 @@ export default function RoomPage({
   const [now, setNow] = useState(Date.now());
   const toastTimerRef = useRef<number | null>(null);
   const [isSourcePickerOpen, setIsSourcePickerOpen] = useState(false);
+  const [presenceSelectOpen, setPresenceSelectOpen] = useState(false);
+  const presenceCloseTimeoutRef = useRef<number | null>(null);
+  const [isRandomizingAvatar, setIsRandomizingAvatar] = useState(false);
+  const [localAvatarSeedOverride, setLocalAvatarSeedOverride] = useState<string | null>(null);
   const [isStartingLocally, setIsStartingLocally] = useState(false);
   const [sourceKind, setSourceKind] = useState<CaptureSource['kind']>('screen');
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
@@ -488,8 +488,29 @@ export default function RoomPage({
       if (toastTimerRef.current !== null) {
         window.clearTimeout(toastTimerRef.current);
       }
+      if (presenceCloseTimeoutRef.current !== null) {
+        window.clearTimeout(presenceCloseTimeoutRef.current);
+      }
     };
   }, []);
+
+  function handlePresenceMouseEnter() {
+    if (presenceCloseTimeoutRef.current !== null) {
+      window.clearTimeout(presenceCloseTimeoutRef.current);
+      presenceCloseTimeoutRef.current = null;
+    }
+    setPresenceSelectOpen(true);
+  }
+
+  function handlePresenceMouseLeave() {
+    if (presenceCloseTimeoutRef.current !== null) {
+      window.clearTimeout(presenceCloseTimeoutRef.current);
+    }
+    presenceCloseTimeoutRef.current = window.setTimeout(() => {
+      setPresenceSelectOpen(false);
+      presenceCloseTimeoutRef.current = null;
+    }, 180);
+  }
 
 async function handleCopyCode() {
   let duration = 2_000;
@@ -541,6 +562,22 @@ async function handleCopyCode() {
     });
   }
 
+  async function handleRandomizeAvatar() {
+    if (isRandomizingAvatar) return;
+    setIsRandomizingAvatar(true);
+    const newSeed = generateRandomAvatarSeed();
+    setLocalAvatarSeedOverride(newSeed);
+    saveLocalAvatarSeed(newSeed);
+
+    try {
+      await updateAvatar(socket, newSeed);
+    } catch (err) {
+      console.error('Falha ao atualizar avatar:', err);
+    } finally {
+      window.setTimeout(() => setIsRandomizingAvatar(false), 450);
+    }
+  }
+
   function confirmKick(participantId: string) {
     setParticipantActionError('');
     socket.emit('room:kick', { participantId }, (result) => {
@@ -565,14 +602,6 @@ async function handleCopyCode() {
     setSelectedSourceId(sourceId);
     if (!await onPrepareSource(sourceId, includeSystemAudio)) {
       setSelectedSourceId(null);
-    }
-  }
-
-  function handleToggleIncludeAudio(checked: boolean) {
-    if (onSetIncludeSystemAudio) {
-      onSetIncludeSystemAudio(checked);
-    } else {
-      void onPrepareSource(selectedSourceId, checked);
     }
   }
 
@@ -605,7 +634,7 @@ async function handleCopyCode() {
   }
 
   return (
-    <main className="relative flex h-full min-h-full flex-col overflow-x-hidden bg-[#0b1020] text-slate-50 lg:h-full lg:flex-row lg:overflow-hidden">
+    <main className="relative flex h-full min-h-full flex-col overflow-x-hidden bg-background text-slate-50 lg:h-full lg:flex-row lg:overflow-hidden">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,hsl(var(--primary)/0.1),transparent_48%)]" />
 
       <aside
@@ -617,8 +646,8 @@ async function handleCopyCode() {
         }`}
       >
         <div className="flex items-center gap-3 border-b border-slate-800/80 pb-4 [-webkit-app-region:drag]">
-          <div className="grid h-10 w-10 place-items-center rounded-xl border border-blue-400/20 bg-blue-500/10 text-blue-300">
-            <ScreenIcon />
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-500/10 text-blue-300">
+              <Radio className="h-6 w-6" />
           </div>
           <div className="min-w-0">
             <h1 className="truncate text-sm font-semibold tracking-tight">TopCast</h1>
@@ -626,12 +655,12 @@ async function handleCopyCode() {
           </div>
         </div>
 
-        <section aria-label="Convite da sala" className="mt-3 rounded-lg border border-slate-700/50 bg-slate-800/40 p-3">
+        <section aria-label="Convite da sala" className="mt-3 rounded-lg bg-slate-800/40 p-3">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Convite</h2>
             <span className="text-[11px] font-medium text-slate-400">Expira em {formatRoomTimeRemaining(room.expiresAt, now)}</span>
           </div>
-          <div className="mt-2 flex items-center gap-2 rounded-md border border-slate-700/60 bg-slate-950/60 p-1.5 pl-2.5">
+          <div className="mt-2 flex items-center gap-2 rounded-md bg-slate-950/60 p-1.5 pl-2.5">
             <span className="min-w-0 flex-1 truncate font-mono text-sm font-bold tracking-widest text-blue-200">{room.inviteCode}</span>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -681,9 +710,9 @@ async function handleCopyCode() {
                       setParticipantToKick({ id: participant.id, displayName: participant.displayName });
                     }
                   }}
-                  className={`group flex items-center justify-between gap-2.5 rounded-lg border border-slate-700/60 bg-slate-900/50 p-2.5 transition-all ${
+                  className={`group flex items-center justify-between gap-2.5 rounded-lg bg-slate-900/50 p-2.5 transition-all ${
                     canKickThisParticipant
-                      ? 'cursor-pointer hover:border-red-400/40 hover:bg-slate-800/80 active:scale-[0.99]'
+                      ? 'cursor-pointer hover:bg-slate-800/80'
                       : ''
                   }`}
                   role={canKickThisParticipant ? 'button' : undefined}
@@ -701,31 +730,40 @@ async function handleCopyCode() {
                   title={canKickThisParticipant ? `Clique para remover ${participant.displayName} da sala` : undefined}
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                    <span
-                      className="relative grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/10 text-xs font-semibold text-white shadow-sm"
-                      style={{ backgroundColor: `hsl(${avatarHue} 42% 36%)` }}
-                      role="img"
-                      aria-label={`${participant.displayName}, ${presenceLabel}`}
-                    >
-                      {initials}
-                      <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-slate-900 ${presenceColor}`} />
-                    </span>
+                    {/* Avatar com status badge na extremidade inferior direita (estilo Discord) */}
+                    <div className="relative shrink-0">
+                      <div
+                        className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-slate-950/80 ring-1 ring-slate-800 shadow-sm"
+                        role="img"
+                        aria-label={`${participant.displayName}, ${presenceLabel}`}
+                      >
+                        <VoxelAvatar
+                          displayName={participant.displayName}
+                          seed={
+                            isSelf && localAvatarSeedOverride
+                              ? localAvatarSeedOverride
+                              : participant.avatarSeed
+                          }
+                        />
+                      </div>
+                      <span
+                        className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-slate-900 shadow-sm ${presenceColor}`}
+                        title={presenceLabel}
+                        aria-label={`Status: ${presenceLabel}`}
+                      />
+                    </div>
+
                     <span className="min-w-0 truncate text-sm font-medium text-slate-200">
                       {participant.displayName}
                     </span>
-                    {isSelf && (
-                      <span className="shrink-0 rounded-md border border-blue-400/30 bg-blue-400/15 px-1.5 py-0.5 text-[11px] font-medium text-blue-300">
-                        Você
-                      </span>
-                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     {participant.role === 'host' ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300">
                         <Crown className="h-3 w-3" />Host
                       </span>
                     ) : (
-                      <span className="rounded-full border border-slate-600/70 bg-slate-700/40 px-2 py-0.5 text-[11px] font-medium text-slate-400">
+                      <span className="rounded-full bg-slate-700/40 px-2 py-0.5 text-[11px] font-medium text-slate-400">
                         Convidado
                       </span>
                     )}
@@ -735,7 +773,7 @@ async function handleCopyCode() {
             })}
           </ul>
           {participantActionError && (
-            <p role="alert" className="mt-2 inline-flex w-fit max-w-full self-start items-start gap-2 break-words rounded-md border border-red-400/20 bg-red-400/[0.06] px-2.5 py-2 text-xs leading-5 text-red-200">
+            <p role="alert" className="mt-2 inline-flex w-fit max-w-full self-start items-start gap-2 break-words rounded-md bg-red-400/[0.06] px-2.5 py-2 text-xs leading-5 text-red-200">
               <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {participantActionError}
             </p>
@@ -743,73 +781,94 @@ async function handleCopyCode() {
         </section>
 
         <div className="mt-4 border-t border-slate-800/80 pt-3 lg:mt-3">
-          <section aria-label="Status da conexão e transmissão" className="rounded-xl border border-slate-800 bg-slate-900/60 p-3 shadow-sm backdrop-blur-sm">
-            {/* Header com Sinalização e Badge P2P */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border ${
-                  isRoomConnected
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                    : 'border-amber-500/30 bg-amber-500/10 text-amber-300 animate-pulse'
-                }`}>
-                  <Radio className="h-3.5 w-3.5" />
+          <section
+            aria-label="Status da conexão e transmissão"
+            className="rounded-2xl bg-slate-900/80 p-4 backdrop-blur-md"
+          >
+            {/* Header: Sinalização com o Status da Conexão */}
+            <div className="flex items-center justify-between gap-3 py-1">
+              <div className="flex min-w-0 items-center gap-3">
+                <span
+                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl transition-colors ${
+                    isRoomConnected
+                      ? 'bg-emerald-500/15 text-emerald-400'
+                      : 'bg-amber-500/15 text-amber-300 animate-pulse'
+                  }`}
+                >
+                  <Radio className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
-                  <span className="block truncate text-xs font-semibold text-slate-200">
-                    {isRoomConnected ? 'Sinalização conectada' : signalingStatusLabels[signalingStatus]}
+                  <span className="block truncate text-xs font-semibold tracking-tight text-slate-100">
+                    Sinalização conectada
                   </span>
                   <span className="block truncate text-[11px] text-slate-400">
                     {isRoomConnected
                       ? rtcConnectedCount > 0
                         ? `${rtcConnectedCount} ${rtcConnectedCount === 1 ? 'conexão P2P ativa' : 'conexões P2P ativas'}`
                         : 'Canal WebSocket pronto'
-                      : 'Tentando reconectar…'}
+                      : signalingStatusLabels[signalingStatus]}
                   </span>
                 </div>
               </div>
 
-              <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${
-                isRoomConnected
-                  ? rtcConnectedCount > 0
-                    ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-300'
-                    : 'border-blue-500/30 bg-blue-500/15 text-blue-300'
-                  : 'border-amber-500/30 bg-amber-500/15 text-amber-300'
-              }`}>
+              {/* Status da Conexão (Online / RTC OK / Offline) */}
+              <span
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide shadow-sm select-none transition-colors ${
+                  isRoomConnected
+                    ? rtcConnectedCount > 0
+                      ? 'bg-emerald-500/15 text-emerald-300'
+                      : 'bg-blue-500/15 text-blue-300'
+                    : 'bg-amber-500/15 text-amber-300'
+                }`}
+              >
                 <span className="relative flex h-1.5 w-1.5">
                   {isRoomConnected && rtcConnectedCount > 0 && (
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                   )}
-                  <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${
-                    isRoomConnected
-                      ? rtcConnectedCount > 0 ? 'bg-emerald-400' : 'bg-blue-400'
-                      : 'bg-amber-400'
-                  }`} />
+                  <span
+                    className={`relative inline-flex h-1.5 w-1.5 rounded-full ${
+                      isRoomConnected
+                        ? rtcConnectedCount > 0
+                          ? 'bg-emerald-400'
+                          : 'bg-blue-400'
+                        : 'bg-amber-400'
+                    }`}
+                  />
                 </span>
-                {isRoomConnected
-                  ? rtcConnectedCount > 0 ? 'RTC OK' : 'Online'
-                  : 'Offline'}
+                <span>
+                  {isRoomConnected
+                    ? rtcConnectedCount > 0
+                      ? 'RTC OK'
+                      : 'Online'
+                    : 'Offline'}
+                </span>
               </span>
             </div>
 
-            {/* Controle de Áudio da Transmissão */}
-            <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-slate-800/80 pt-2.5">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-md border text-slate-400 ${
-                  hasSystemAudio && systemAudioEnabled
-                    ? 'border-blue-500/30 bg-blue-500/10 text-blue-400'
-                    : 'border-slate-800 bg-slate-950 text-slate-500'
-                }`}>
+            {/* Linha Divisória com espaçamento vertical respirável */}
+            <div className="my-3.5 border-t border-slate-800/80" />
+
+            {/* Linha 2: Áudio da Tela */}
+            <div className="flex items-center justify-between gap-3 py-1">
+              <div className="flex min-w-0 items-center gap-3">
+                <span
+                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl transition-colors ${
+                    hasSystemAudio && systemAudioEnabled
+                      ? 'bg-blue-500/15 text-blue-400'
+                      : 'bg-slate-950/70 text-slate-500'
+                  }`}
+                >
                   {hasSystemAudio && systemAudioEnabled ? (
-                    <Volume2 className="h-3.5 w-3.5" />
+                    <Volume2 className="h-4 w-4" />
                   ) : (
-                    <VolumeX className="h-3.5 w-3.5" />
+                    <VolumeX className="h-4 w-4" />
                   )}
                 </span>
                 <div className="min-w-0">
-                  <span className="block truncate text-[12px] font-medium text-slate-300">
+                  <span className="block truncate text-xs font-semibold tracking-tight text-slate-100">
                     Áudio da tela
                   </span>
-                  <span className="block truncate text-[11px] text-slate-500">
+                  <span className="block truncate text-[11px] text-slate-400">
                     {!hasSystemAudio
                       ? 'Nenhum som transmitido'
                       : systemAudioEnabled
@@ -828,21 +887,21 @@ async function handleCopyCode() {
                       size="sm"
                       aria-label={systemAudioEnabled ? 'Desativar áudio da transmissão' : 'Ativar áudio da transmissão'}
                       onClick={() => onToggleSystemAudio(!systemAudioEnabled)}
-                      className={`h-7 px-2 text-[12px] font-medium gap-1.5 transition-colors ${
+                      className={`h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg border-0 transition-all ${
                         systemAudioEnabled
-                          ? 'border-slate-700 bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white'
-                          : 'border-blue-500/40 bg-blue-500/15 text-blue-300 hover:bg-blue-500/25'
+                          ? 'bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white'
+                          : 'bg-blue-500/15 text-blue-300 hover:bg-blue-500/25'
                       }`}
                     >
                       {systemAudioEnabled ? (
                         <>
                           <VolumeX className="h-3 w-3" />
-                          Mutar
+                          <span>Mutar</span>
                         </>
                       ) : (
                         <>
                           <Volume2 className="h-3 w-3" />
-                          Ativar
+                          <span>Ativar</span>
                         </>
                       )}
                     </Button>
@@ -855,59 +914,170 @@ async function handleCopyCode() {
             </div>
 
             {!supportsSystemAudio && (
-              <p className="mt-2 text-center text-[11px] leading-4 text-slate-500">
+              <p className="mt-2.5 text-center text-[11px] leading-4 text-slate-500">
                 Áudio do sistema indisponível nesta plataforma.
               </p>
             )}
           </section>
 
+          {/* Footer: Card do Perfil do Usuário com seleção de status no hover consistente */}
           <div className="mt-3">
-            {room.participants.filter((participant) => participant.id === selfParticipantId).map((participant) => {
-            const avatarHue = getParticipantAvatarHue(participant.displayName);
-            const initials = getParticipantInitials(participant.displayName);
-            const presenceColor = participant.presence === 'available'
-              ? 'bg-emerald-400'
-              : participant.presence === 'away' ? 'bg-amber-300' : 'bg-red-400';
-            const presenceLabel = participant.presence === 'available'
-              ? 'Disponível'
-              : participant.presence === 'away' ? 'Ausente' : 'Ocupado';
+            {room.participants
+              .filter((participant) => participant.id === selfParticipantId)
+              .map((participant) => {
+                const avatarHue = getParticipantAvatarHue(participant.displayName);
+                const initials = getParticipantInitials(participant.displayName);
+                const presenceColor =
+                  participant.presence === 'available'
+                    ? 'bg-emerald-400'
+                    : participant.presence === 'away'
+                    ? 'bg-amber-400'
+                    : 'bg-red-400';
+                const presenceLabel =
+                  participant.presence === 'available'
+                    ? 'Disponível'
+                    : participant.presence === 'away'
+                    ? 'Ausente'
+                    : 'Ocupado';
 
-            return (
-              <Select key={participant.id} value={participant.presence} onValueChange={handlePresenceChange}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <SelectTrigger
-                      aria-label={`Alterar status de ${participant.displayName}`}
-                      className="h-auto w-full justify-start gap-3 rounded-xl border-transparent bg-slate-900/70 p-3 text-left hover:border-slate-700 hover:bg-slate-900 focus:ring-blue-500/40"
+                return (
+                  <div
+                    key={participant.id}
+                    onMouseEnter={handlePresenceMouseEnter}
+                    onMouseLeave={handlePresenceMouseLeave}
+                    className="relative"
+                  >
+                    {/* Botão Card do Perfil */}
+                    <button
+                      type="button"
+                      onClick={() => setPresenceSelectOpen((prev) => !prev)}
+                      aria-haspopup="listbox"
+                      aria-expanded={presenceSelectOpen}
+                      aria-label={`Alterar status de ${participant.displayName}. Status atual: ${presenceLabel}`}
+                      className="group flex w-full items-center justify-start gap-3 rounded-2xl bg-slate-900/70 p-3 text-left transition-all hover:bg-slate-900/95 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                     >
-                      <span
-                        className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 text-xs font-semibold tracking-wide text-white"
-                        style={{ backgroundColor: `hsl(${avatarHue} 42% 36%)` }}
-                        aria-hidden="true"
-                      >
-                        {initials}
-                      </span>
+                      <div className="relative shrink-0" aria-hidden="true">
+                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-slate-950/80 ring-2 ring-slate-800 shadow-sm">
+                          <VoxelAvatar
+                            displayName={participant.displayName}
+                            seed={localAvatarSeedOverride || participant.avatarSeed}
+                          />
+                        </div>
+                        <span
+                          className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-slate-900 shadow-sm ${presenceColor}`}
+                        />
+                      </div>
+
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-slate-100">{participant.displayName}</span>
-                        <span className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
+                        <span className="block truncate text-sm font-semibold text-slate-100">
+                          {participant.displayName}
+                        </span>
+                        <span className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
                           <span className={`h-1.5 w-1.5 rounded-full ${presenceColor}`} />
-                          {presenceLabel}
+                          <span className="truncate">{presenceLabel}</span>
                         </span>
                       </span>
-                    </SelectTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    Clique para alterar seu status
-                  </TooltipContent>
-                </Tooltip>
-                <SelectContent side="top" align="start" className="w-[240px]">
-                  <SelectItem value="available">Disponível</SelectItem>
-                  <SelectItem value="away">Ausente</SelectItem>
-                  <SelectItem value="busy">Ocupado</SelectItem>
-                </SelectContent>
-              </Select>
-            );
-          })}
+
+                      {/* Caret Icon animado suavemente com rotação */}
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-all duration-200 group-hover:bg-slate-800/80 group-hover:text-slate-200">
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform duration-300 ease-out ${
+                            presenceSelectOpen ? 'rotate-180 text-blue-400' : 'rotate-0'
+                          }`}
+                        />
+                      </span>
+                    </button>
+
+                    {/* Dropdown Menu com bridge invisível para eliminar qualquer flickering no hover */}
+                    <div
+                      className={`absolute bottom-full left-0 right-0 z-50 pb-2 transition-all duration-200 ease-out ${
+                        presenceSelectOpen
+                          ? 'pointer-events-auto opacity-100 translate-y-0'
+                          : 'pointer-events-none opacity-0 translate-y-1'
+                      }`}
+                      role="listbox"
+                      aria-label="Opções de status de presença e avatar"
+                    >
+                      <div className="flex flex-col gap-1 overflow-hidden rounded-2xl border border-slate-800/90 bg-slate-900/95 p-2 shadow-2xl shadow-black/80 backdrop-blur-xl">
+                        {/* Miniatura da foto de perfil e opção randomizar (apenas icon) */}
+                        <div className="flex items-center justify-between gap-2.5 rounded-xl bg-slate-950/60 p-2 border border-slate-800/50">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-slate-700/60 bg-slate-900 shadow-inner">
+                              <VoxelAvatar
+                                displayName={participant.displayName}
+                                seed={localAvatarSeedOverride || participant.avatarSeed}
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="block truncate text-xs font-semibold text-slate-200">
+                                Avatar Top
+                              </span>
+                              <span className="block truncate text-[10px] text-slate-400">
+                                Foto de perfil
+                              </span>
+                            </div>
+                          </div>
+
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleRandomizeAvatar();
+                                }}
+                                disabled={isRandomizingAvatar}
+                                aria-label="Randomizar avatar"
+                                className="group/dice flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-slate-800 hover:text-white disabled:opacity-50"
+                              >
+                                <Dice5
+                                  className={`h-4 w-4 transition-transform duration-500 ease-out group-hover/dice:rotate-180 ${
+                                    isRandomizingAvatar ? 'rotate-[360deg] text-blue-400' : ''
+                                  }`}
+                                />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>Randomizar</TooltipContent>
+                          </Tooltip>
+                        </div>
+
+                        {/* Divisória sutil */}
+                        <div className="my-1 border-t border-slate-800/80" />
+                        {[
+                          { value: 'available', label: 'Disponível', dotColor: 'bg-emerald-400' },
+                          { value: 'away', label: 'Ausente', dotColor: 'bg-amber-400' },
+                          { value: 'busy', label: 'Ocupado', dotColor: 'bg-red-400' },
+                        ].map((option) => {
+                          const isSelected = participant.presence === option.value;
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              role="option"
+                              aria-selected={isSelected}
+                              onClick={() => {
+                                handlePresenceChange(option.value);
+                                setPresenceSelectOpen(false);
+                              }}
+                              className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-medium transition-all ${
+                                isSelected
+                                  ? 'bg-slate-800 text-white font-semibold shadow-sm'
+                                  : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                              }`}
+                            >
+                              <span className="flex items-center gap-2.5">
+                                <span className={`h-2 w-2 rounded-full ${option.dotColor}`} />
+                                <span>{option.label}</span>
+                              </span>
+                              {isSelected && <Check className="h-3.5 w-3.5 text-blue-400" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         </div>
 
@@ -961,7 +1131,7 @@ async function handleCopyCode() {
                     size="icon"
                     aria-label="Abrir guia de boas-vindas"
                     onClick={onOpenWelcome}
-                    className="h-9 w-9 rounded-xl border border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700 hover:bg-slate-800 hover:text-slate-100"
+                    className="h-9 w-9 rounded-xl bg-slate-900/60 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
                   >
                     <HelpCircle className="h-4 w-4" />
                   </Button>
@@ -993,7 +1163,7 @@ async function handleCopyCode() {
                 </Tooltip>
                 <AlertDialogContent className="max-w-[440px] overflow-hidden p-0">
                   <div className="flex gap-4 p-5 sm:p-6">
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-400/20 bg-red-400/10 text-red-300">
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-red-400/10 text-red-300">
                       <AlertTriangle className="h-5 w-5" />
                     </span>
                     <div className="min-w-0 pt-0.5">
@@ -1038,7 +1208,7 @@ async function handleCopyCode() {
 
         <div className="flex flex-1 flex-col gap-4 py-4 lg:min-h-0 lg:py-5">
           <div className="flex min-w-0 flex-1 flex-col gap-4 lg:min-h-0">
-            <section className="flex min-h-[340px] flex-1 flex-col items-center justify-center overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/60 p-4 shadow-xl shadow-black/10 sm:min-h-[420px] sm:p-6 lg:min-h-0">
+            <section className="flex min-h-[340px] flex-1 flex-col items-center justify-center overflow-hidden rounded-3xl bg-slate-900/60 p-4 shadow-xl shadow-black/10 sm:min-h-[420px] sm:p-6 lg:min-h-0">
               {presentationStream && isReceivingVideo ? (
                 <>
                   <div className="mb-4 flex w-full items-center justify-between gap-3">
@@ -1047,26 +1217,52 @@ async function handleCopyCode() {
                       {isHost ? 'Sua tela está sendo compartilhada' : `${host?.displayName ?? 'Host'} está compartilhando`}
                     </div>
                     {isHost && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button type="button" variant="secondary" size="sm" onClick={onStopCapture}>
-                            Parar compartilhamento
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          Interromper transmissão da sua tela
-                        </TooltipContent>
-                      </Tooltip>
+                      <div className="flex items-center gap-2">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={openSourcePicker}
+                              className="h-8 gap-1.5 bg-slate-800/80 text-slate-200 hover:bg-slate-700 hover:text-white"
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" />
+                              Mudar tela
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Alterar a tela ou janela transmitida sem interromper a transmissão
+                          </TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={onStopCapture}
+                              className="h-8 text-red-300 hover:bg-red-400/10 hover:text-red-200"
+                            >
+                              Parar compartilhamento
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Interromper transmissão da sua tela
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                     )}
                   </div>
-                  <div className="aspect-video w-full overflow-hidden rounded-2xl border border-slate-800 bg-black">
+                  <div className="aspect-video w-full overflow-hidden rounded-2xl bg-black">
                     <StreamVideo stream={presentationStream} muted={isHost} />
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="grid h-16 w-16 place-items-center rounded-2xl border border-blue-400/15 bg-blue-500/10 text-blue-300">
-                    <ScreenIcon className="h-7 w-7" />
+                  <div className="grid h-16 w-16 place-items-center rounded-2xl bg-blue-500/10 text-blue-300">
+                    <Monitor className="h-7 w-7" />
                   </div>
                   <p className="mt-6 text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Sala pronta</p>
                   <h2 className="mt-2 text-2xl font-semibold tracking-tight">
@@ -1080,8 +1276,8 @@ async function handleCopyCode() {
                   {isHost && (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button type="button" size="lg" onClick={openSourcePicker} className="mt-7 bg-blue-600 text-white hover:bg-blue-500">
-                          <ScreenIcon className="mr-2 h-4 w-4" />
+                        <Button type="button" size="lg" onClick={openSourcePicker} className="mt-7 bg-primary text-primary-foreground hover:bg-primary/90">
+                          <Monitor className="mr-2 h-4 w-4" />
                           Compartilhar tela
                         </Button>
                       </TooltipTrigger>
@@ -1094,7 +1290,7 @@ async function handleCopyCode() {
               )}
 
               {captureError && isHost && !isSourcePickerOpen && (
-                <p role="alert" className="mx-auto mt-4 inline-flex w-fit max-w-full items-start gap-2 break-words rounded-lg border border-red-400/20 bg-red-400/[0.06] px-3 py-2.5 text-sm text-red-200">
+                <p role="alert" className="mx-auto mt-4 inline-flex w-fit max-w-full items-start gap-2 break-words rounded-lg bg-red-400/[0.06] px-3 py-2.5 text-sm text-red-200">
                   <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
                   {captureError}
                 </p>
@@ -1106,25 +1302,27 @@ async function handleCopyCode() {
       </div>
 
       <Dialog open={isSourcePickerOpen} onOpenChange={(open) => !open && closeSourcePicker()}>
-        <DialogContent className="flex max-h-[88vh] w-full max-w-4xl flex-col gap-0 overflow-hidden border-slate-700/80 bg-[#0f172a] p-0 text-slate-100 shadow-[0_32px_100px_rgba(0,0,0,0.65)] sm:max-w-4xl sm:rounded-2xl">
+        <DialogContent className="flex max-h-[88vh] w-full max-w-4xl flex-col gap-0 overflow-hidden bg-card p-0 text-slate-100 shadow-[0_32px_100px_rgba(0,0,0,0.65)] sm:max-w-4xl sm:rounded-2xl">
           <DialogHeader className="border-b border-slate-800/80 px-6 py-5 text-left">
             <div className="flex items-center gap-3.5 pr-8">
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-blue-400/20 bg-blue-500/10 text-blue-300">
-                <ScreenIcon className="h-5 w-5" />
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+                <Monitor className="h-5 w-5" />
               </span>
               <div className="min-w-0">
                 <DialogTitle className="text-base font-semibold tracking-tight sm:text-lg">
-                  Escolha o que compartilhar
+                  {presentationStream ? 'Alterar tela de transmissão' : 'Escolha o que compartilhar'}
                 </DialogTitle>
                 <DialogDescription className="mt-1 text-xs text-slate-400 sm:text-sm">
-                  Selecione uma tela inteira ou janela de aplicativo para transmitir à sala.
+                  {presentationStream
+                    ? 'Selecione uma nova tela ou janela para transmitir sem interromper a transmissão.'
+                    : 'Selecione uma tela inteira ou janela de aplicativo para transmitir à sala.'}
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 bg-slate-950/40 px-6 py-3">
-            <div role="tablist" aria-label="Tipo de origem" className="inline-flex rounded-lg border border-slate-700/70 bg-slate-950/70 p-1">
+            <div role="tablist" aria-label="Tipo de origem" className="inline-flex rounded-lg bg-slate-950/70 p-1">
               {(['screen', 'window'] as const).map((kind) => {
                 const isScreen = kind === 'screen';
                 const isActive = sourceKind === kind;
@@ -1142,7 +1340,7 @@ async function handleCopyCode() {
                     }}
                     className={`inline-flex h-9 items-center gap-2 rounded-md px-3.5 text-sm font-medium transition-colors ${
                       isActive
-                        ? 'bg-blue-600 text-white shadow-sm'
+                        ? 'bg-primary text-primary-foreground shadow-sm'
                         : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
                     }`}
                   >
@@ -1181,7 +1379,7 @@ async function handleCopyCode() {
 
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
             {captureError && (
-              <p role="alert" className="mb-4 flex w-fit max-w-full items-start gap-2.5 break-words rounded-lg border border-red-400/20 bg-red-400/[0.06] px-3.5 py-3 text-sm leading-5 text-red-200">
+              <p role="alert" className="mb-4 flex w-fit max-w-full items-start gap-2.5 break-words rounded-lg bg-red-400/[0.06] px-3.5 py-3 text-sm leading-5 text-red-200">
                 <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
                 {captureError}
               </p>
@@ -1189,7 +1387,7 @@ async function handleCopyCode() {
 
             {isLoadingSources && filteredSources.length === 0 && (
               <div role="status" className="flex min-h-64 flex-col items-center justify-center text-center">
-                <span className="grid h-12 w-12 place-items-center rounded-xl border border-slate-700 bg-slate-800/70 text-blue-300">
+                <span className="grid h-12 w-12 place-items-center rounded-xl bg-slate-800/70 text-blue-300">
                   <RefreshCw className="h-5 w-5 animate-spin" />
                 </span>
                 <p className="mt-4 text-sm font-medium text-slate-200">Buscando {sourceKind === 'screen' ? 'telas' : 'janelas'}…</p>
@@ -1198,8 +1396,8 @@ async function handleCopyCode() {
             )}
 
             {!isLoadingSources && filteredSources.length === 0 && (
-              <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-slate-700/80 bg-slate-950/30 px-6 text-center">
-                <span className="grid h-12 w-12 place-items-center rounded-xl border border-slate-700 bg-slate-800/70 text-slate-400">
+              <div className="flex min-h-64 flex-col items-center justify-center rounded-xl bg-slate-950/30 px-6 text-center">
+                <span className="grid h-12 w-12 place-items-center rounded-xl bg-slate-800/70 text-slate-400">
                   {sourceKind === 'screen' ? <Monitor className="h-5 w-5" /> : <AppWindow className="h-5 w-5" />}
                 </span>
                 <p className="mt-4 text-sm font-medium text-slate-200">Nenhuma {sourceKind === 'screen' ? 'tela' : 'janela'} encontrada</p>
@@ -1220,92 +1418,32 @@ async function handleCopyCode() {
                       disabled={isPreparingSource}
                       onClick={() => void handleSelectSource(source.id)}
                       aria-pressed={isSelected}
-                      className={`group flex flex-col overflow-hidden rounded-xl border text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70 disabled:cursor-wait disabled:opacity-60 ${
+                      className={`group flex flex-col overflow-hidden rounded-xl text-left border transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:cursor-wait disabled:opacity-60 ${
                         isSelected
-                          ? 'border-blue-500 bg-blue-950/30 ring-2 ring-blue-500/50 shadow-lg shadow-blue-500/10'
-                          : 'border-slate-800 bg-slate-950/60 hover:border-slate-600 hover:bg-slate-900/60'
+                          ? 'border-primary bg-primary/10 shadow-sm shadow-primary/25 ring-1 ring-primary'
+                          : 'border-slate-800/80 bg-slate-950/60 hover:border-primary hover:bg-slate-900/60'
                       }`}
                     >
-                      <div className="relative aspect-video w-full overflow-hidden bg-slate-950 border-b border-slate-800/80">
+                      <div className="relative aspect-video w-full overflow-hidden bg-slate-950">
                         <SourceThumbnail source={source} sourceKind={sourceKind} />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
 
                         {isSelected && (
-                          <span className="absolute right-2.5 top-2.5 grid h-6 w-6 place-items-center rounded-full bg-blue-600 text-white shadow-md ring-2 ring-blue-400/40 animate-in zoom-in-75">
+                          <span className="absolute right-2.5 top-2.5 grid h-6 w-6 place-items-center rounded-full bg-primary text-primary-foreground shadow-md">
                             <Check className="h-3.5 w-3.5" />
                           </span>
                         )}
                       </div>
 
-                      <div className="flex min-w-0 items-center gap-2.5 px-3 py-2.5">
-                        {source.kind === 'window' ? (
-                          source.appIconDataUrl ? (
-                            <img
-                              src={source.appIconDataUrl}
-                              alt=""
-                              className="h-5 w-5 shrink-0 rounded object-contain bg-slate-900/80 p-0.5"
-                            />
-                          ) : (
-                            <AppWindow className="h-4 w-4 shrink-0 text-slate-400" />
-                          )
-                        ) : (
-                          <Monitor className="h-4 w-4 shrink-0 text-blue-400" />
-                        )}
-                        <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-200 group-hover:text-white">
+                      <div className="min-w-0 px-3 py-2.5">
+                        <p className="truncate text-xs font-medium text-slate-200">
                           {source.name}
-                        </span>
+                        </p>
                       </div>
                     </button>
                   );
                 })}
               </div>
-            )}
-
-            {supportsSystemAudio && (
-              <label
-                htmlFor="include-system-audio"
-                className={`mt-5 flex cursor-pointer items-center gap-3.5 rounded-xl border p-3.5 transition-all duration-200 select-none ${
-                  includeSystemAudio
-                    ? 'border-blue-500/50 bg-blue-950/20 shadow-sm'
-                    : 'border-slate-800 bg-slate-950/40 hover:border-slate-700 hover:bg-slate-900/40'
-                }`}
-              >
-                <Checkbox
-                  id="include-system-audio"
-                  checked={includeSystemAudio}
-                  disabled={isStartingCapture || isStartingLocally}
-                  onCheckedChange={(checked) => handleToggleIncludeAudio(checked === true)}
-                  className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-500"
-                />
-                <div
-                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg border transition-colors ${
-                    includeSystemAudio
-                      ? 'border-blue-500/30 bg-blue-500/15 text-blue-400'
-                      : 'border-slate-800 bg-slate-900/80 text-slate-400'
-                  }`}
-                >
-                  <Volume2 className="h-4 w-4" />
-                </div>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-slate-200">
-                    {sourceKind === 'window' ? 'Transmitir áudio desta janela' : 'Transmitir áudio do sistema'}
-                  </span>
-                  <span className="mt-0.5 block text-xs leading-5 text-slate-400">
-                    {sourceKind === 'window'
-                      ? 'Captura isolada do áudio deste aplicativo (WASAPI Loopback) — sem transmitir Discord ou sons de outros programas.'
-                      : 'Captura a saída geral de som do Windows — incluindo jogos, chamadas e músicas.'}
-                  </span>
-                </span>
-                <span
-                  className={`hidden shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider transition-colors sm:inline ${
-                    includeSystemAudio
-                      ? 'border-blue-500/40 bg-blue-500/10 text-blue-300'
-                      : 'border-slate-800 bg-slate-900 text-slate-500'
-                  }`}
-                >
-                  Opcional
-                </span>
-              </label>
             )}
           </div>
 
@@ -1325,17 +1463,17 @@ async function handleCopyCode() {
                   isStartingLocally
                 }
                 onClick={() => void handleStartCapture()}
-                className="min-w-[140px] gap-2 bg-blue-600 px-4 text-white hover:bg-blue-500 disabled:opacity-50"
+                className="min-w-[140px] gap-2 bg-primary px-4 text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
                 {isStartingCapture || isStartingLocally ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Iniciando…</span>
+                    <span>{presentationStream ? 'Alterando…' : 'Iniciando…'}</span>
                   </>
                 ) : (
                   <>
-                    <ScreenIcon className="h-4 w-4" />
-                    <span>Compartilhar</span>
+                    {presentationStream ? <RefreshCw className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
+                    <span>{presentationStream ? 'Alterar tela' : 'Compartilhar'}</span>
                   </>
                 )}
               </Button>
@@ -1345,9 +1483,9 @@ async function handleCopyCode() {
       </Dialog>
 
       <AlertDialog open={Boolean(participantToKick)} onOpenChange={(open) => !open && setParticipantToKick(null)}>
-        <AlertDialogContent className="max-w-[420px] overflow-hidden p-0 border-slate-800 bg-slate-900 text-slate-100">
+        <AlertDialogContent className="max-w-[420px] overflow-hidden p-0 bg-slate-900 text-slate-100 sm:rounded-2xl">
           <div className="flex gap-4 p-5 sm:p-6">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-500/30 bg-red-500/15 text-red-400">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-red-500/15 text-red-400">
               <UserX className="h-5 w-5" />
             </span>
             <div className="min-w-0 pt-0.5">
@@ -1387,10 +1525,10 @@ async function handleCopyCode() {
         <div
           role={toastTone === 'error' ? 'alert' : 'status'}
           aria-live={toastTone === 'error' ? 'assertive' : 'polite'}
-          className={`fixed right-4 top-4 z-[90] flex w-fit max-w-[min(24rem,calc(100vw-2rem))] items-start gap-2.5 break-words rounded-xl border px-4 py-3 text-sm shadow-2xl sm:right-6 sm:top-6 ${
+          className={`fixed right-4 top-4 z-[90] flex w-fit max-w-[min(24rem,calc(100vw-2rem))] items-start gap-2.5 break-words rounded-xl px-4 py-3 text-sm shadow-2xl sm:right-6 sm:top-6 ${
             toastTone === 'error'
-              ? 'border-red-400/25 bg-slate-900 text-red-100 shadow-red-950/20'
-              : 'border-slate-700 bg-slate-900 text-slate-100'
+              ? 'bg-slate-900 text-red-100 shadow-red-950/20'
+              : 'bg-slate-900 text-slate-100'
           }`}
         >
           {toastTone === 'error'

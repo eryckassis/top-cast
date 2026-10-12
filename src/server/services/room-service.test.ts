@@ -213,4 +213,23 @@ describe('RoomService', () => {
     assert.equal(rejoined.room.participants.at(-1)?.id, 'reconnected-guest-socket');
     assert.equal(rejoined.room.participants.at(-1)?.displayName, 'Guest');
   });
+
+  it('assigns and updates participant avatar seeds', () => {
+    const service = new RoomService();
+    const created = service.create('host-socket', 'Host User', 'custom-host-seed');
+    assert.equal(created.ok, true);
+    if (!created.ok) return;
+
+    assert.equal(created.room.participants[0]?.avatarSeed, 'custom-host-seed');
+
+    const joined = service.join('guest-socket', created.room.inviteCode, 'Guest User');
+    assert.equal(joined.ok, true);
+    if (!joined.ok) return;
+
+    assert.ok(joined.room.participants[1]?.avatarSeed);
+
+    const updated = service.setAvatar('guest-socket', 'new-random-avatar-seed');
+    assert.ok(updated);
+    assert.equal(updated?.participants.find((p) => p.id === 'guest-socket')?.avatarSeed, 'new-random-avatar-seed');
+  });
 });

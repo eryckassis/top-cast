@@ -61,18 +61,18 @@ describe('Theme Switcher', () => {
     }
   });
 
-  it('defaults to cyber-blue when no theme is persisted', () => {
+  it('defaults to midnight-violet when no theme is persisted', () => {
     assert.equal(getSavedTheme(), DEFAULT_THEME);
-    assert.equal(DEFAULT_THEME, 'cyber-blue');
+    assert.equal(DEFAULT_THEME, 'midnight-violet');
   });
 
   it('persists and applies chosen theme to document.documentElement and localStorage', () => {
-    const targetTheme: ThemeId = 'midnight-violet';
+    const targetTheme: ThemeId = 'cyber-blue';
     applyTheme(targetTheme);
 
-    assert.equal(document.documentElement.getAttribute('data-theme'), 'midnight-violet');
-    assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), 'midnight-violet');
-    assert.equal(getSavedTheme(), 'midnight-violet');
+    assert.equal(document.documentElement.getAttribute('data-theme'), 'cyber-blue');
+    assert.equal(window.localStorage.getItem(THEME_STORAGE_KEY), 'cyber-blue');
+    assert.equal(getSavedTheme(), 'cyber-blue');
   });
 
   it('falls back to DEFAULT_THEME if stored theme id is invalid', () => {

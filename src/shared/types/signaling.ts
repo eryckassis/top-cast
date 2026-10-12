@@ -27,6 +27,7 @@ export interface RoomParticipant {
   role: 'host' | 'guest';
   joinedAt: number;
   presence: 'available' | 'away' | 'busy';
+  avatarSeed?: string;
 }
 
 export interface RoomAvailability {
@@ -57,12 +58,22 @@ export type RoomOperationResult =
 
 export interface CreateRoomPayload {
   displayName: string;
+  avatarSeed?: string;
 }
 
 export interface JoinRoomPayload {
   inviteCode: string;
   displayName: string;
+  avatarSeed?: string;
 }
+
+export interface AvatarPayload {
+  avatarSeed: string;
+}
+
+export type AvatarResult =
+  | { ok: true }
+  | { ok: false; error: 'NOT_IN_ROOM' | 'INVALID_SEED' };
 
 export interface LeaveRoomResponse {
   ok: true;
@@ -144,6 +155,10 @@ export interface ClientToServerEvents {
   'room:presence': (
     payload: { presence: RoomParticipant['presence'] },
     acknowledge: (result: PresenceStateResult) => void,
+  ) => void;
+  'room:avatar': (
+    payload: AvatarPayload,
+    acknowledge: (result: AvatarResult) => void,
   ) => void;
   'webrtc:description': (
     payload: WebRtcDescriptionPayload,

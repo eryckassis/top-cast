@@ -16,7 +16,7 @@ const AlertDialogContent = ({ className, ...props }: AlertDialogPrimitive.AlertD
   <AlertDialogPortal>
     <AlertDialogOverlay />
     <AlertDialogPrimitive.Content
-      className={cn('fixed left-1/2 top-1/2 z-[81] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 scale-95 rounded-xl border border-slate-700 bg-slate-900 p-6 text-slate-100 opacity-0 shadow-[0_24px_80px_rgba(0,0,0,0.55)] outline-none transition duration-200 data-[state=open]:scale-100 data-[state=open]:opacity-100 data-[state=closed]:scale-95 data-[state=closed]:opacity-0', className)}
+      className={cn('fixed left-1/2 top-1/2 z-[81] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 scale-95 rounded-xl bg-slate-900 p-6 text-slate-100 opacity-0 shadow-[0_24px_80px_rgba(0,0,0,0.55)] outline-none transition duration-200 data-[state=open]:scale-100 data-[state=open]:opacity-100 data-[state=closed]:scale-95 data-[state=closed]:opacity-0', className)}
       {...props}
     />
   </AlertDialogPortal>
@@ -26,7 +26,7 @@ const AlertDialogTitle = AlertDialogPrimitive.Title;
 const AlertDialogDescription = AlertDialogPrimitive.Description;
 const AlertDialogCancel = ({ className, ...props }: AlertDialogPrimitive.AlertDialogCancelProps) => (
   <AlertDialogPrimitive.Cancel
-    className={cn('inline-flex h-9 items-center justify-center rounded-md border border-slate-700 px-3 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50', className)}
+    className={cn('inline-flex h-9 items-center justify-center rounded-md bg-slate-800/80 px-3 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50', className)}
     {...props}
   />
 );

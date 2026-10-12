@@ -1,4 +1,4 @@
-import type { RoomOperationResult } from '../../shared/types/signaling';
+import type { AvatarResult, RoomOperationResult } from '../../shared/types/signaling';
 import type { SignalingClient } from './signaling-client';
 
 const CONNECTION_TIMEOUT_MS = 8_000;
@@ -54,10 +54,11 @@ function sendRoomRequest(
 export async function createRoom(
   socket: SignalingClient,
   displayName: string,
+  avatarSeed?: string,
 ): Promise<RoomOperationResult> {
   await ensureConnected(socket);
   return sendRoomRequest(socket, (acknowledge) => {
-    socket.emit('room:create', { displayName }, acknowledge);
+    socket.emit('room:create', { displayName, avatarSeed }, acknowledge);
   });
 }
 
@@ -65,9 +66,27 @@ export async function joinRoom(
   socket: SignalingClient,
   inviteCode: string,
   displayName: string,
+  avatarSeed?: string,
 ): Promise<RoomOperationResult> {
   await ensureConnected(socket);
   return sendRoomRequest(socket, (acknowledge) => {
-    socket.emit('room:join', { inviteCode, displayName }, acknowledge);
+    socket.emit('room:join', { inviteCode, displayName, avatarSeed }, acknowledge);
+  });
+}
+
+export async function updateAvatar(
+  socket: SignalingClient,
+  avatarSeed: string,
+): Promise<AvatarResult> {
+  await ensureConnected(socket);
+  return new Promise((resolve) => {
+    const timeout = window.setTimeout(() => {
+      resolve({ ok: false, error: 'NOT_IN_ROOM' });
+    }, REQUEST_TIMEOUT_MS);
+
+    socket.emit('room:avatar', { avatarSeed }, (result) => {
+      window.clearTimeout(timeout);
+      resolve(result ?? { ok: false, error: 'NOT_IN_ROOM' });
+    });
   });
 }

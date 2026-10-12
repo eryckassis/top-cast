@@ -20,15 +20,6 @@ export interface ThemeOption {
 
 export const THEME_OPTIONS: readonly ThemeOption[] = [
   {
-    id: 'cyber-blue',
-    name: 'Cyber Blue',
-    description: 'Azul cobalto clássico com fundo grafite escuro',
-    primaryColor: '#3b82f6',
-    secondaryColor: '#1e293b',
-    bgColor: '#0b1020',
-    accentColor: '#60a5fa',
-  },
-  {
     id: 'midnight-violet',
     name: 'Midnight Violet',
     description: 'Violeta elétrico com fundo obsidiana profundo',
@@ -36,6 +27,15 @@ export const THEME_OPTIONS: readonly ThemeOption[] = [
     secondaryColor: '#241437',
     bgColor: '#0d0814',
     accentColor: '#c084fc',
+  },
+  {
+    id: 'cyber-blue',
+    name: 'Cyber Blue',
+    description: 'Azul cobalto clássico com fundo grafite escuro',
+    primaryColor: '#3b82f6',
+    secondaryColor: '#1e293b',
+    bgColor: '#0b1020',
+    accentColor: '#60a5fa',
   },
   {
     id: 'emerald-matrix',
@@ -75,7 +75,7 @@ export const THEME_OPTIONS: readonly ThemeOption[] = [
   },
 ] as const;
 
-export const DEFAULT_THEME: ThemeId = 'cyber-blue';
+export const DEFAULT_THEME: ThemeId = 'midnight-violet';
 export const THEME_STORAGE_KEY = 'topcast:theme';
 
 export function getSavedTheme(): ThemeId {

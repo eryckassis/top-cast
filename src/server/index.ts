@@ -5,6 +5,7 @@ import { isValidDescriptionPayload, isValidIceCandidatePayload } from './service
 import { createIceServerConfiguration, loadTurnConfiguration } from './services/ice-credentials.js';
 import {
   SIGNALING_PROTOCOL_VERSION,
+  type AvatarResult,
   type ClientToServerEvents,
   type KickParticipantResult,
   type IceServersResult,
@@ -125,7 +126,7 @@ io.on('connection', (socket) => {
     }
 
     try {
-      const result = roomService.create(socket.id, payload?.displayName);
+      const result = roomService.create(socket.id, payload?.displayName, payload?.avatarSeed);
       if (!result.ok) {
         acknowledge(result);
         return;
@@ -155,7 +156,7 @@ io.on('connection', (socket) => {
     }
 
     try {
-      const result = roomService.join(socket.id, payload?.inviteCode, payload?.displayName);
+      const result = roomService.join(socket.id, payload?.inviteCode, payload?.displayName, payload?.avatarSeed);
       if (!result.ok) {
         acknowledge(result);
         return;
@@ -242,6 +243,26 @@ io.on('connection', (socket) => {
       result = {
         ok: false,
         error: socket.data.roomId ? 'INVALID_STATE' : 'NOT_IN_ROOM',
+      };
+    } else {
+      io.to(snapshot.id).emit('room:updated', snapshot);
+      result = { ok: true };
+    }
+    acknowledge(result);
+  });
+
+  socket.on('room:avatar', (payload, acknowledge) => {
+    if (typeof acknowledge !== 'function') {
+      app.log.warn({ socketId: socket.id }, 'Rejected room:avatar without acknowledgment callback');
+      return;
+    }
+
+    let result: AvatarResult;
+    const snapshot = roomService.setAvatar(socket.id, payload?.avatarSeed);
+    if (!snapshot) {
+      result = {
+        ok: false,
+        error: socket.data.roomId ? 'INVALID_SEED' : 'NOT_IN_ROOM',
       };
     } else {
       io.to(snapshot.id).emit('room:updated', snapshot);

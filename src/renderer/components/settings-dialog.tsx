@@ -57,7 +57,7 @@ export function SettingsDialog({
                 size="icon"
                 aria-label="Abrir configurações do aplicativo"
                 className={cn(
-                  'h-9 w-9 rounded-xl border border-slate-800 bg-slate-900/60 text-slate-400 transition-all hover:border-slate-700 hover:bg-slate-800 hover:text-slate-100 focus-visible:ring-blue-400',
+                  'h-9 w-9 rounded-xl bg-slate-900/60 text-slate-400 transition-all hover:bg-slate-800 hover:text-slate-100 focus-visible:ring-blue-400',
                   triggerClassName,
                 )}
               >
@@ -69,12 +69,12 @@ export function SettingsDialog({
         </Tooltip>
       )}
 
-      <DialogContent className="max-w-2xl border-slate-800 bg-slate-900 p-0 text-slate-100 sm:rounded-2xl">
+      <DialogContent className="max-w-2xl bg-slate-900 p-0 text-slate-100 sm:rounded-2xl">
         {/* Header */}
         <div className="border-b border-slate-800/80 px-6 py-5">
           <DialogHeader className="text-left">
             <div className="flex items-center gap-3">
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-blue-400/20 bg-blue-500/10 text-blue-400">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-500/10 text-blue-400">
                 <Settings className="h-5 w-5" />
               </span>
               <div>
@@ -118,51 +118,55 @@ export function SettingsDialog({
                     aria-checked={isSelected}
                     onClick={() => handleSelectTheme(themeOption.id)}
                     className={cn(
-                      'group relative flex flex-col items-start rounded-xl border p-3.5 text-left transition-all duration-150',
+                      'group relative flex flex-col items-start rounded-xl p-3.5 text-left border transition-all duration-200',
                       'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
                       isSelected
-                        ? 'border-blue-400/80 bg-blue-500/[0.08] shadow-md shadow-blue-500/10'
-                        : 'border-slate-800 bg-slate-950/50 hover:border-slate-700 hover:bg-slate-950/80',
+                        ? 'border-blue-500/50 bg-blue-500/[0.10] shadow-md shadow-blue-500/10'
+                        : 'border-slate-800/80 bg-slate-950/50 hover:border-slate-700/80 hover:bg-slate-950/80',
                     )}
                   >
                     {/* Badge de Selecionado */}
                     {isSelected && (
-                      <span className="absolute right-2.5 top-2.5 grid h-5 w-5 place-items-center rounded-full bg-blue-500 text-slate-950 shadow-sm">
-                        <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                      <span className="absolute right-2.5 top-2.5 grid h-5 w-5 place-items-center rounded-full bg-blue-500 text-white shadow-sm ring-2 ring-slate-950">
+                        <Check className="h-3 w-3 stroke-[3]" />
                       </span>
                     )}
 
                     {/* Miniatura Swatch da Paleta */}
                     <div
-                      className="mb-3 flex h-14 w-full items-center justify-between rounded-lg border p-2 shadow-inner"
+                      className="mb-3 flex h-14 w-full items-center justify-between rounded-lg p-2 border border-slate-800/80 shadow-inner"
                       style={{
                         backgroundColor: themeOption.bgColor,
-                        borderColor: isSelected ? themeOption.primaryColor : 'rgba(255,255,255,0.08)',
                       }}
                     >
                       {/* Cartão de visualização interna */}
                       <div
-                        className="flex h-full flex-1 items-center gap-2 rounded-md border px-2.5"
+                        className="flex h-full flex-1 items-center gap-2.5 rounded-md px-3 border border-white/5"
                         style={{
                           backgroundColor: themeOption.secondaryColor,
-                          borderColor: 'rgba(255,255,255,0.06)',
                         }}
                       >
                         {/* Ponto de cor primária */}
                         <span
-                          className="h-3.5 w-3.5 rounded-full shadow-sm"
+                          className="h-3.5 w-3.5 rounded-full shadow-sm ring-1 ring-white/10"
                           style={{ backgroundColor: themeOption.primaryColor }}
                         />
                         {/* Ponto de cor de destaque */}
                         <span
-                          className="h-2.5 w-2.5 rounded-full opacity-80"
+                          className="h-2.5 w-2.5 rounded-full opacity-90 ring-1 ring-white/10"
                           style={{ backgroundColor: themeOption.accentColor }}
                         />
-                        {/* Barra decorativa de terciária */}
-                        <span
-                          className="h-1.5 flex-1 rounded-full opacity-40"
-                          style={{ backgroundColor: themeOption.primaryColor }}
-                        />
+                        {/* Barra decorativa de acento */}
+                        <div className="flex-1 flex flex-col gap-1">
+                          <span
+                            className="h-1.5 w-full rounded-full opacity-60"
+                            style={{ backgroundColor: themeOption.primaryColor }}
+                          />
+                          <span
+                            className="h-1 w-2/3 rounded-full opacity-30"
+                            style={{ backgroundColor: themeOption.accentColor }}
+                          />
+                        </div>
                       </div>
                     </div>
 
@@ -185,9 +189,8 @@ export function SettingsDialog({
           <DialogFooter className="sm:justify-end">
             <Button
               type="button"
-              variant="outline"
               onClick={() => setOpen(false)}
-              className="border-slate-800 bg-slate-800/50 text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+              className="bg-slate-800/50 text-slate-300 hover:bg-slate-800 hover:text-slate-100"
             >
               Fechar
             </Button>

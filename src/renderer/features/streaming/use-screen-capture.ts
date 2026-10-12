@@ -31,7 +31,7 @@ export function useScreenCapture() {
     isPreparingSource: false,
     isStartingCapture: false,
     preparedSourceId: null,
-    includeSystemAudio: false,
+    includeSystemAudio: true,
     hasSystemAudio: false,
     systemAudioEnabled: false,
     error: null,
@@ -103,7 +103,7 @@ export function useScreenCapture() {
       return true;
     }
 
-    const audioToInclude = (includeSystemAudio !== undefined ? includeSystemAudio : state.includeSystemAudio) && supportsSystemAudio;
+    const audioToInclude = supportsSystemAudio;
     setState((current) => ({ ...current, isPreparingSource: true, error: null }));
     try {
       const selection = await getScreenCaptureApi().selectSource(
@@ -151,7 +151,7 @@ export function useScreenCapture() {
     try {
       await getScreenCaptureApi().selectSource(
         state.preparedSourceId,
-        state.includeSystemAudio && supportsSystemAudio,
+        supportsSystemAudio,
       );
 
       const isWindow = state.preparedSourceId.startsWith('window:');
@@ -163,7 +163,7 @@ export function useScreenCapture() {
           width: { ideal: 1280, max: 1280 },
           height: { ideal: 720, max: 720 },
         },
-        audio: !isWindow && state.includeSystemAudio,
+        audio: !isWindow && supportsSystemAudio,
       });
       const [videoTrack] = stream.getVideoTracks();
       if (!videoTrack) {
@@ -174,14 +174,14 @@ export function useScreenCapture() {
       let systemAudioTrack = stream.getAudioTracks()[0] ?? null;
       let audioWarning: string | null = null;
 
-      // Se for janela e o áudio estiver marcado, iniciar captura de áudio isolada pelo processo.
+      // Se for janela e suportar áudio, iniciar captura de áudio isolada pelo processo.
       // Nunca recorre ao loopback geral do sistema aqui: isso incluiria áudio de chamadas.
-      if (isWindow && state.includeSystemAudio) {
+      let newProcessAudioController: ProcessAudioStreamController | null = null;
+      if (isWindow && supportsSystemAudio) {
         try {
-          const controller = await createProcessAudioTrack(state.preparedSourceId);
-          processAudioRef.current = controller;
-          stream.addTrack(controller.track);
-          systemAudioTrack = controller.track;
+          newProcessAudioController = await createProcessAudioTrack(state.preparedSourceId);
+          stream.addTrack(newProcessAudioController.track);
+          systemAudioTrack = newProcessAudioController.track;
         } catch (err) {
           console.warn('[ScreenCapture] Falha ao capturar áudio isolado do processo:', err);
           const reason = err instanceof Error ? err.message : String(err);
@@ -189,12 +189,16 @@ export function useScreenCapture() {
         }
       }
 
+      // Interrompe controlador de áudio e faixas anteriores após sucesso do novo stream
+      processAudioRef.current?.stop();
+      processAudioRef.current = newProcessAudioController;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = stream;
+
       videoTrack.addEventListener('ended', () => {
-        processAudioRef.current?.stop();
-        processAudioRef.current = null;
         if (streamRef.current === stream) {
+          processAudioRef.current?.stop();
+          processAudioRef.current = null;
           streamRef.current = null;
           setState((current) => ({
             ...current,
@@ -222,14 +226,16 @@ export function useScreenCapture() {
       }));
       return true;
     } catch (error) {
-      processAudioRef.current?.stop();
-      processAudioRef.current = null;
+      if (!streamRef.current) {
+        processAudioRef.current?.stop();
+        processAudioRef.current = null;
+      }
       const message = error instanceof Error ? error.message : 'Não foi possível iniciar o compartilhamento de tela.';
       setState((current) => ({
         ...current,
         isStartingCapture: false,
         preparedSourceId: null,
-        includeSystemAudio: false,
+        includeSystemAudio: current.includeSystemAudio,
         error: message,
       }));
       return false;

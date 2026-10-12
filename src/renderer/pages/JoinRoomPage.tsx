@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from 'react';
+import { ArrowLeft, KeyRound, Monitor } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { LoadingOverlay } from '../components/ui/loading-overlay';
 import { APP_NAME } from '../../shared/constants/app';
 import { joinRoom } from '../lib/room-client';
+import { getOrCreateLocalAvatarSeed } from '../lib/voxel-avatar';
 import type { RoomSnapshot } from '../../shared/types/signaling';
 import type { SignalingClient } from '../lib/signaling-client';
 
@@ -33,15 +35,6 @@ function formatInviteCode(value: string): string {
     : normalized;
 }
 
-function ScreenIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5">
-      <rect x="3" y="4" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7" />
-      <path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 export default function JoinRoomPage({ socket, displayName, onBack, onRoomJoined }: JoinRoomPageProps) {
   const [inviteCode, setInviteCode] = useState('');
   const [submissionState, setSubmissionState] = useState<SubmissionState>('idle');
@@ -58,7 +51,8 @@ export default function JoinRoomPage({ socket, displayName, onBack, onRoomJoined
     setSubmissionState('loading');
     setErrorMessage('');
     try {
-      const result = await joinRoom(socket, inviteCode, displayName);
+      const avatarSeed = getOrCreateLocalAvatarSeed();
+      const result = await joinRoom(socket, inviteCode, displayName, avatarSeed);
       if (!result.ok) {
         setSubmissionState('server-error');
         setErrorMessage(roomErrorMessages[result.error] ?? 'Não foi possível entrar na sala.');
@@ -78,14 +72,14 @@ export default function JoinRoomPage({ socket, displayName, onBack, onRoomJoined
   }
 
   return (
-    <main className="relative flex h-full min-h-full items-center justify-center overflow-x-hidden bg-[#0b1020] px-5 py-6 text-slate-50 sm:px-8 sm:py-8">
+    <main className="relative flex h-full min-h-full items-center justify-center overflow-x-hidden bg-background px-5 py-6 text-slate-50 sm:px-8 sm:py-8">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_0%,hsl(var(--primary)/0.1),transparent_48%)]" />
 
       <div className="relative w-full max-w-[480px]">
         <header className="mb-10 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-xl border border-blue-400/20 bg-blue-500/10 text-blue-300">
-              <ScreenIcon />
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-blue-500/10 text-blue-300">
+              <Monitor className="h-5 w-5" />
             </div>
             <span className="text-sm font-semibold tracking-tight">{APP_NAME}</span>
           </div>
@@ -96,19 +90,14 @@ export default function JoinRoomPage({ socket, displayName, onBack, onRoomJoined
             onClick={onBack}
             className="text-slate-400 hover:text-slate-100"
           >
-            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="mr-2 h-4 w-4">
-              <path d="M15.5 10h-11m4 4-4-4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <ArrowLeft className="mr-2 h-4 w-4" />
             Voltar
           </Button>
         </header>
 
-        <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-2xl shadow-black/20 sm:p-8">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl border border-blue-400/15 bg-blue-500/10 text-blue-300">
-            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-5 w-5">
-              <path d="M10 14a4 4 0 0 0 5.66 0l3-3A4 4 0 0 0 13 5.34l-1.72 1.72" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-              <path d="M14 10a4 4 0 0 0-5.66 0l-3 3A4 4 0 0 0 11 18.66l1.72-1.72" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-            </svg>
+        <section className="rounded-3xl bg-slate-900/70 p-6 shadow-2xl shadow-black/20 sm:p-8">
+          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-500/10 text-blue-300">
+            <KeyRound className="h-5 w-5" />
           </div>
 
           <h1 className="mt-6 text-2xl font-semibold tracking-tight">Entrar em uma sala</h1>
@@ -141,17 +130,17 @@ export default function JoinRoomPage({ socket, displayName, onBack, onRoomJoined
 
             <div id="invite-code-status" aria-live="polite" className="mt-4 min-h-12">
               {submissionState === 'invalid' && (
-                <p role="alert" className="rounded-lg border border-red-400/20 bg-red-400/[0.06] px-3 py-2.5 text-sm text-red-200">
+                <p role="alert" className="rounded-lg bg-red-400/[0.06] px-3 py-2.5 text-sm text-red-200">
                   Informe um código completo no formato XXX-XXX.
                 </p>
               )}
               {submissionState === 'server-error' && (
-                <p role="alert" className="rounded-lg border border-red-400/20 bg-red-400/[0.06] px-3 py-2.5 text-sm leading-5 text-red-200">
+                <p role="alert" className="rounded-lg bg-red-400/[0.06] px-3 py-2.5 text-sm leading-5 text-red-200">
                   {errorMessage}
                 </p>
               )}
               {submissionState === 'loading' && (
-                <p role="status" className="rounded-lg border border-blue-400/15 bg-blue-400/[0.05] px-3 py-2.5 text-sm text-blue-100">
+                <p role="status" className="rounded-lg bg-blue-400/[0.05] px-3 py-2.5 text-sm text-blue-100">
                   Conectando ao servidor e verificando o convite…
                 </p>
               )}

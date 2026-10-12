@@ -36,7 +36,19 @@ export class RoomService {
   private readonly roomIdsBySocketId = new Map<string, string>();
   private readonly expiredCodes = new Map<string, number>();
 
-  create(socketId: string, rawName: unknown, now = Date.now()): RoomOperationResult {
+  create(
+    socketId: string,
+    rawName: unknown,
+    rawAvatarSeedOrNow?: unknown,
+    maybeNow = Date.now(),
+  ): RoomOperationResult {
+    let rawAvatarSeed: unknown = rawAvatarSeedOrNow;
+    let now = maybeNow;
+    if (typeof rawAvatarSeedOrNow === 'number') {
+      now = rawAvatarSeedOrNow;
+      rawAvatarSeed = undefined;
+    }
+
     if (this.roomIdsBySocketId.has(socketId)) {
       return { ok: false, error: 'ALREADY_IN_ROOM' };
     }
@@ -49,6 +61,7 @@ export class RoomService {
       return { ok: false, error: 'INVALID_NAME' };
     }
 
+    const avatarSeed = this.validateAvatarSeed(rawAvatarSeed) ?? randomUUID();
     const room: Room = {
       id: randomUUID(),
       inviteCode: this.createInviteCode(),
@@ -62,6 +75,7 @@ export class RoomService {
       role: 'host',
       joinedAt: now,
       presence: 'available',
+      avatarSeed,
     };
 
     room.participants.set(socketId, participant);
@@ -76,8 +90,16 @@ export class RoomService {
     socketId: string,
     rawCode: unknown,
     rawName: unknown,
-    now = Date.now(),
+    rawAvatarSeedOrNow?: unknown,
+    maybeNow = Date.now(),
   ): RoomOperationResult {
+    let rawAvatarSeed: unknown = rawAvatarSeedOrNow;
+    let now = maybeNow;
+    if (typeof rawAvatarSeedOrNow === 'number') {
+      now = rawAvatarSeedOrNow;
+      rawAvatarSeed = undefined;
+    }
+
     if (this.roomIdsBySocketId.has(socketId)) {
       return { ok: false, error: 'ALREADY_IN_ROOM' };
     }
@@ -116,12 +138,14 @@ export class RoomService {
       return { ok: false, error: 'ROOM_FULL' };
     }
 
+    const avatarSeed = this.validateAvatarSeed(rawAvatarSeed) ?? randomUUID();
     const participant: RoomParticipant = {
       id: socketId,
       displayName,
       role: 'guest',
       joinedAt: now,
       presence: 'available',
+      avatarSeed,
     };
     room.participants.set(socketId, participant);
     this.roomIdsBySocketId.set(socketId, room.id);
@@ -217,6 +241,21 @@ export class RoomService {
     return this.toSnapshot(room);
   }
 
+  setAvatar(socketId: string, rawAvatarSeed: unknown): RoomSnapshot | undefined {
+    const avatarSeed = this.validateAvatarSeed(rawAvatarSeed);
+    if (!avatarSeed) {
+      return undefined;
+    }
+    const roomId = this.roomIdsBySocketId.get(socketId);
+    const room = roomId ? this.roomsById.get(roomId) : undefined;
+    const participant = room?.participants.get(socketId);
+    if (!room || !participant) {
+      return undefined;
+    }
+    participant.avatarSeed = avatarSeed;
+    return this.toSnapshot(room);
+  }
+
   authorizeSignal(
     fromSocketId: string,
     toSocketId: string,
@@ -273,6 +312,17 @@ export class RoomService {
       return undefined;
     }
     return displayName;
+  }
+
+  private validateAvatarSeed(rawSeed: unknown): string | undefined {
+    if (typeof rawSeed !== 'string') {
+      return undefined;
+    }
+    const trimmed = rawSeed.trim();
+    if (trimmed.length === 0 || trimmed.length > 64) {
+      return undefined;
+    }
+    return trimmed;
   }
 
   private createInviteCode(): string {
