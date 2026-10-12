@@ -733,7 +733,7 @@ async function handleCopyCode() {
                     {/* Avatar com status badge na extremidade inferior direita (estilo Discord) */}
                     <div className="relative shrink-0">
                       <div
-                        className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-slate-950/80 ring-1 ring-slate-800 shadow-sm"
+                        className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md bg-slate-950/80 ring-1 ring-slate-800 shadow-sm"
                         role="img"
                         aria-label={`${participant.displayName}, ${presenceLabel}`}
                       >
@@ -954,7 +954,7 @@ async function handleCopyCode() {
                       aria-haspopup="listbox"
                       aria-expanded={presenceSelectOpen}
                       aria-label={`Alterar status de ${participant.displayName}. Status atual: ${presenceLabel}`}
-                      className="group flex w-full items-center justify-start gap-3 rounded-2xl bg-slate-900/70 p-3 text-left transition-all hover:bg-slate-900/95 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      className="group flex w-full items-center justify-start gap-2 rounded-2xl bg-slate-900/70 p-3 text-left transition-all hover:bg-slate-900/95 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                     >
                       <div className="relative shrink-0" aria-hidden="true">
                         <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-slate-950/80 ring-2 ring-slate-800 shadow-sm">
@@ -972,8 +972,7 @@ async function handleCopyCode() {
                         <span className="block truncate text-sm font-semibold text-slate-100">
                           {participant.displayName}
                         </span>
-                        <span className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-400">
-                          <span className={`h-1.5 w-1.5 rounded-full ${presenceColor}`} />
+                        <span className="mt-0.5 flex items-center text-xs text-slate-400">
                           <span className="truncate">{presenceLabel}</span>
                         </span>
                       </span>
