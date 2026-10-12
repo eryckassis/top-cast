@@ -159,8 +159,8 @@ export function TopSoundsDropdown({
               triggerSize === 'sm' ? 'h-8 px-2' : 'h-9 px-2.5',
               !showLabel && (triggerSize === 'sm' ? 'w-8 p-0' : 'w-9 p-0'),
               isOpen || anyPlaying
-                ? 'border-primary/50 bg-primary/20 text-primary shadow-sm hover:bg-primary/25 active:scale-95'
-                : 'border-border/40 bg-slate-900/60 text-slate-300 backdrop-blur-md shadow-sm hover:border-border/70 hover:bg-slate-800 hover:text-slate-100 active:scale-95',
+                ? 'border-primary/50 bg-primary/20 text-primary hover:bg-primary/25'
+                : 'border-border/40 bg-slate-900/60 text-slate-300 backdrop-blur-md hover:border-border/70 hover:bg-slate-800 hover:text-slate-100',
               triggerClassName,
             )}
           >
@@ -268,7 +268,7 @@ export function TopSoundsDropdown({
                   )}
                 >
                   {/* Emoji do som */}
-                  <span className="text-base shrink-0 transition-transform duration-150 group-hover:scale-110">
+                  <span className="text-base shrink-0 transition-transform duration-150">
                     {clip.emoji}
                   </span>
 

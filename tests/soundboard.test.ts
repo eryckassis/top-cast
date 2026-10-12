@@ -102,8 +102,8 @@ describe('Soundboard & Top Sounds (Discord-style)', () => {
 
   it('integrates TopSoundsDropdown into StreamVideo controls bar and sidebar', () => {
     assert.ok(roomPageContent.includes("import { TopSoundsDropdown } from '../components/top-sounds-dropdown'"));
-    // Na barra de controles do vídeo para usar enquanto assiste a transmissão
-    assert.ok(roomPageContent.includes('<TopSoundsDropdown placement="top"'));
+    // Na barra de controles da transmissão abre para CIMA e para a ESQUERDA
+    assert.ok(roomPageContent.includes('<TopSoundsDropdown placement="top-left"'));
     // Na sidebar de áudio abre para CIMA e para a DIREITA
     assert.ok(roomPageContent.includes('<TopSoundsDropdown placement="top-right" />'));
   });

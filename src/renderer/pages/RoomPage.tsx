@@ -436,8 +436,8 @@ function StreamVideo({ stream, isHost = false }: StreamVideoProps) {
 
         {/* Direita: Top Sounds (Soundboard) e Botão de Modo Tela Cheia */}
         <div className="flex items-center gap-2">
-          {/* Top Sounds Dropdown para usar enquanto assiste a transmissão */}
-          <TopSoundsDropdown placement="top" triggerSize="default" />
+          {/* Top Sounds Dropdown para usar na transmissão (abre para CIMA e para a ESQUERDA) */}
+          <TopSoundsDropdown placement="top-left" triggerSize="default" />
 
           <Tooltip>
             <TooltipTrigger asChild>
